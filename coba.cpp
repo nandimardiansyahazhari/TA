@@ -43,7 +43,7 @@ int main() {
     }
 
   
-    VideoCapture cap(2);
+    VideoCapture cap(0);
     if (!cap.isOpened()) {
         cerr << "Gagal membuka kamera!" << endl;
         return -1;
