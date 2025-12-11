@@ -33,8 +33,8 @@ int main() {
     auto programStart = high_resolution_clock::now();
     vector<FrameData> frameHistory;
 
-    string model = "/home/ansyah/CLionProjects/PA/mobilenet_iter_73000.caffemodel";
-    string config = "/home/ansyah/CLionProjects/PA/mnssddeploy.prototxt";
+    string model = "MobileNetSSD_deploy.caffemodel";
+    string config = "MobileNetSSD_deploy.prototxt";
     Net net = readNetFromCaffe(config, model);
 
     if (net.empty()) {
@@ -45,11 +45,14 @@ int main() {
   
     VideoCapture cap(0);
     if (!cap.isOpened()) {
-        cerr << "Gagal membuka kamera!" << endl;
-        return -1;
+        cout << "Camera 0 not found, trying Camera 1..." << endl;
+        cap = VideoCapture(1);
+        if (!cap.isOpened()) {
+            cerr << "Gagal membuka kamera (0 dan 1)!" << endl;
+            return -1;
+        }
     }
-    cap.set(CAP_PROP_FRAME_WIDTH, 320);
-    cap.set(CAP_PROP_FRAME_HEIGHT, 240);
+    // Resolution settings removed to allow auto-negotiation
 
   
     double f = 1469.86;
@@ -68,7 +71,13 @@ int main() {
                               "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
 
     Mat frame;
+    bool frameRead = false;
     while (cap.read(frame)) {
+        if (frame.empty()) {
+             cerr << "Warning: Empty frame read from camera!" << endl;
+             continue;
+        }
+        frameRead = true;
         startTick = getTickCount();
 
         Mat blob = blobFromImage(frame, 0.007843, Size(300, 300), Scalar(127.5, 127.5, 127.5));
@@ -189,7 +198,9 @@ int main() {
     }
 
     cap.release();
-    destroyWindow("Collision Warning System"); 
+    if (frameRead) {
+        destroyWindow("Collision Warning System");
+    } 
 
 if (!frameHistory.empty()) {
     double maxFPS = 0.0;

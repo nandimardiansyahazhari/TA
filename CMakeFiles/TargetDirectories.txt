@@ -1,0 +1,3 @@
+/home/ansyah/Documents/TA/CMakeFiles/program.dir
+/home/ansyah/Documents/TA/CMakeFiles/edit_cache.dir
+/home/ansyah/Documents/TA/CMakeFiles/rebuild_cache.dir

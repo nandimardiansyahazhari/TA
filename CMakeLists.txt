@@ -14,13 +14,9 @@ if(NOT OpenCV_FOUND)
     message(FATAL_ERROR "OpenCV tidak ditemukan. Periksa instalasi OpenCV Anda.")
 endif()
 
-include_directories("usr/local/include")
+include_directories("/usr/local/include")
 
-# Cari pustaka pthreadpool
-find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
-if(NOT PTHREADPOOL_LIB)
-    message(FATAL_ERROR "Library pthreadpool tidak ditemukan.")
-endif()
+
 
 # Tambahkan executable proyek
 add_executable(program coba.cpp)
@@ -28,7 +24,6 @@ add_executable(program coba.cpp)
 # Tautkan pustaka OpenCV dan pthreadpool
 target_link_libraries(program
     ${OpenCV_LIBS}
-    ${PTHREADPOOL_LIB}
 )
 
 # Tambahkan include directory
