@@ -1,0 +1,30 @@
+# Build and CMake files
+build/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+*.cmake
+*.o
+*.a
+*.so
+*.out
+*.bin
+
+# Executables
+program
+program_lite
+program_optimized
+coba
+belajar
+
+# Large files and datasets
+*.caffemodel
+dataset/
+*.zip
+*.pth
+*.onnx
+
+# IDE and Python
+.ipynb_checkpoints/
+__pycache__/
+*.pyc

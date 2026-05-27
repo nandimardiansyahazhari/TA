@@ -1,0 +1,8 @@
+
+CMakeFiles/
+Makefile
+CMakeCache.txt
+cmake_install.cmake
+*.cmake
+program_lite
+program_optimized
