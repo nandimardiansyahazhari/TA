@@ -146,6 +146,7 @@ try:
     from torchvision.transforms import functional as TF
     from PIL import Image
     import numpy as np
+    import matplotlib.pyplot as plt
 except ImportError as _e:
     _missing.append(str(_e))
 
@@ -154,7 +155,7 @@ if _missing:
     for m in _missing:
         print(f"  {m}")
     print("\nJalankan perintah berikut untuk menginstal:\n")
-    print("  pip install torch torchvision pillow numpy tqdm\n")
+    print("  pip install torch torchvision pillow numpy tqdm matplotlib\n")
     sys.exit(1)
 
 # tqdm opsional
@@ -168,20 +169,14 @@ except ImportError:
 # KONFIGURASI KELAS
 # ─────────────────────────────────────────────────────────────────────────────
 
-VEHICLE_CLASSES: List[str] = ["background", "car", "motorbike", "bus", "bicycle"]
+VEHICLE_CLASSES: List[str] = ["background", "car", "motor"]
 CLASS_TO_IDX:    Dict[str, int] = {cls: idx for idx, cls in enumerate(VEHICLE_CLASSES)}
-NUM_CLASSES:     int = len(VEHICLE_CLASSES)   # 5
+NUM_CLASSES:     int = len(VEHICLE_CLASSES)   # 3
 
 # Alias bahasa Indonesia dan sinonim umum
 CLASS_ALIASES: Dict[str, str] = {
     "mobil":      "car",
-    "motor":      "motorbike",
-    "motorcycle": "motorbike",
-    "bis":        "bus",
-    "truck":      "bus",
-    "truk":       "bus",
-    "sepeda":     "bicycle",
-    "bike":       "bicycle",
+    "motor":      "motor",
 }
 
 
@@ -575,7 +570,7 @@ class _SSDWrapper(torch.nn.Module):
         self.model = model
 
     def forward(self, x: torch.Tensor):
-        return self.model([x])
+        return self.model(list(x))
 
 
 def export_onnx(
@@ -657,7 +652,7 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument(
-        "--dataset", required=True,
+        "--dataset", default="./dataset",
         help="Folder dataset (harus berisi subfolder images/ dan annotations/)",
     )
     p.add_argument(
@@ -830,6 +825,9 @@ def main() -> None:
 
     # ── Training loop ─────────────────────────────────────────────────────────
     print(f"[Training] Mulai training {args.epochs} epoch...\n")
+    
+    history_train_loss = []
+    history_val_loss = []
 
     for epoch in range(start_epoch, args.epochs):
         train_loss = train_one_epoch(
@@ -877,6 +875,21 @@ def main() -> None:
             _save_ckpt(
                 os.path.join(args.output, f"checkpoint_epoch_{epoch+1}.pth")
             )
+            
+        history_train_loss.append(train_loss)
+        history_val_loss.append(val_loss)
+
+    # Buat dan simpan grafik di akhir training
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(start_epoch + 1, args.epochs + 1), history_train_loss, label="Train Loss", marker='o')
+    plt.plot(range(start_epoch + 1, args.epochs + 1), history_val_loss, label="Val Loss", marker='o')
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Grafik Loss Training")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(os.path.join(args.output, "training_graph.png"))
+    plt.close()
 
     # ── Ekspor model akhir ────────────────────────────────────────────────────
     print(f"\n{'='*62}")
