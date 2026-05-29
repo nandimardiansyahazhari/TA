@@ -233,6 +233,8 @@ def main() -> None:
 
     start_epoch = 0
     best_val_loss = float("inf")
+    history_train_loss = []
+    history_val_loss = []
 
     if args.resume:
         checkpoint = torch.load(args.resume, map_location=device)
@@ -264,6 +266,9 @@ def main() -> None:
         scheduler.step()
         current_lr = scheduler.get_last_lr()[0]
 
+        history_train_loss.append(train_loss)
+        history_val_loss.append(val_loss)
+
         is_best = val_loss < best_val_loss
         if is_best:
             best_val_loss = val_loss
@@ -282,6 +287,27 @@ def main() -> None:
         if is_best:
             save_checkpoint(best_path, epoch)
 
+    # Buat dan simpan grafik di akhir training
+    try:
+        import matplotlib
+        matplotlib.use('Agg')  # Backend non-GUI untuk cloud / server
+        import matplotlib.pyplot as plt
+        
+        plt.figure(figsize=(8, 5))
+        plt.plot(range(start_epoch + 1, args.epochs + 1), history_train_loss, label="Train Loss", marker='o')
+        plt.plot(range(start_epoch + 1, args.epochs + 1), history_val_loss, label="Val Loss", marker='o')
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("Grafik Loss Training (Cloud)")
+        plt.legend()
+        plt.grid(True)
+        graph_path = Path(output_dir) / "training_graph.png"
+        plt.savefig(graph_path)
+        plt.close()
+        print(f"[Plot] Grafik training disimpan di: {graph_path}")
+    except Exception as e:
+        print(f"[Plot] Gagal membuat grafik training: {e}")
+
     best_path = Path(output_dir) / "vehicle_detector_best.pth"
     if best_path.is_file():
         checkpoint = torch.load(best_path, map_location="cpu")
@@ -292,7 +318,7 @@ def main() -> None:
     save_class_labels(output_dir)
 
     print("\n[Output files]")
-    for name in ["vehicle_detector_best.pth", "vehicle_detector_last.pth", "vehicle_detector.onnx", "vehicle_classes.txt"]:
+    for name in ["vehicle_detector_best.pth", "vehicle_detector_last.pth", "vehicle_detector.onnx", "vehicle_classes.txt", "training_graph.png"]:
         file_path = Path(output_dir) / name
         if file_path.exists():
             print(f"  - {file_path}")
