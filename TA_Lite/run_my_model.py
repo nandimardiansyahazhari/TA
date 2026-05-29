@@ -47,7 +47,7 @@ def main():
         labels = predictions["labels"].cpu().numpy()
         
         for box, score, label_id in zip(boxes, scores, labels):
-            if score > 0.3: # Threshold
+            if score > 0.5: # Threshold
                 x1, y1, x2, y2 = map(int, box)
                 class_name = VEHICLE_CLASSES[label_id]
                 

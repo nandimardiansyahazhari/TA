@@ -175,8 +175,10 @@ NUM_CLASSES:     int = len(VEHICLE_CLASSES)   # 3
 
 # Alias bahasa Indonesia dan sinonim umum
 CLASS_ALIASES: Dict[str, str] = {
-    "mobil":      "car",
-    "motor":      "motor",
+    "mobil":       "car",
+    "motorcycle":  "motor", 
+    "motorbike":   "motor",
+    "kendaraan":   "car"
 }
 
 
@@ -780,6 +782,7 @@ def main() -> None:
         num_workers=args.workers,
         collate_fn=collate_fn,
         pin_memory=(device.type == "cuda"),
+        drop_last=True,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -788,6 +791,7 @@ def main() -> None:
         num_workers=args.workers,
         collate_fn=collate_fn,
         pin_memory=(device.type == "cuda"),
+        drop_last=(len(val_dataset) % args.batch == 1),
     )
 
     # ── Model ────────────────────────────────────────────────────────────────

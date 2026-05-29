@@ -211,6 +211,7 @@ def main() -> None:
         num_workers=args.workers,
         collate_fn=collate_fn,
         pin_memory=(device.type == "cuda"),
+        drop_last=True,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -219,6 +220,7 @@ def main() -> None:
         num_workers=args.workers,
         collate_fn=collate_fn,
         pin_memory=(device.type == "cuda"),
+        drop_last=(len(val_dataset) % args.batch == 1),
     )
 
     model = build_model(NUM_CLASSES, pretrained_backbone=not args.no_pretrained)
