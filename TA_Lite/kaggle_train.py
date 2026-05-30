@@ -78,6 +78,11 @@ CLASS_ALIASES: Dict[str, str] = {
     "motorbike":   "motor",
     "kendaraan":   "car",
     "motor":       "motor",
+    "truck":       "car",
+    "truk":        "car",
+    "ambulance":   "car",
+    "police car":  "car",
+    "police_car":  "car",
 }
 
 print(f"Dataset  : {DATASET_DIR}")

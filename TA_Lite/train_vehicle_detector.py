@@ -178,7 +178,12 @@ CLASS_ALIASES: Dict[str, str] = {
     "mobil":       "car",
     "motorcycle":  "motor", 
     "motorbike":   "motor",
-    "kendaraan":   "car"
+    "kendaraan":   "car",
+    "truck":       "car",
+    "truk":        "car",
+    "ambulance":   "car",
+    "police car":  "car",
+    "police_car":  "car",
 }
 
 
