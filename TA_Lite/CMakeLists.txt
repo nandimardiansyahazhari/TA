@@ -15,3 +15,9 @@ add_executable(program_optimized
 	object_detector.cpp
 )
 target_link_libraries(program_optimized ${OpenCV_LIBS})
+
+add_executable(program_video
+	main_video.cpp
+	object_detector.cpp
+)
+target_link_libraries(program_video ${OpenCV_LIBS})

@@ -14,7 +14,7 @@ def main():
     model = build_model(num_classes=len(VEHICLE_CLASSES), pretrained_backbone=False)
     
     # 2. Muat bobot dari hasil training terbaik
-    checkpoint = torch.load("/home/ansyah/Unduhan/vehicle_detector_best.pth", map_location=device)
+    checkpoint = torch.load("/home/ansyah/Unduhan/vehicle_detector_best (1).pth", map_location=device)
     model.load_state_dict(checkpoint["model"])
     model.to(device)
     model.eval()

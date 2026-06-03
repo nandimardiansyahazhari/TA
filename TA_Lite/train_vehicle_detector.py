@@ -570,14 +570,87 @@ def evaluate(
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _SSDWrapper(torch.nn.Module):
-    """Wrapper agar SSD menerima satu tensor (bukan list) — diperlukan ONNX."""
+    """Wrapper agar SSD menerima satu tensor (bukan list) dan melakukan decoding box
+    serta softmax secara internal, menghasilkan model ONNX yang 100% kompatibel dengan OpenCV DNN."""
 
     def __init__(self, model: torch.nn.Module) -> None:
         super().__init__()
         self.model = model
+        self.model.eval()
+        
+        # Hasilkan jangkar (anchors) konstan sekali saat inisialisasi
+        dummy_img = torch.zeros(1, 3, 320, 320)
+        images, _ = self.model.transform([dummy_img[0]])
+        features = self.model.backbone(images.tensors)
+        if isinstance(features, torch.Tensor):
+            from collections import OrderedDict
+            features = OrderedDict([("0", features)])
+        features_list = list(features.values())
+        
+        # Jangkar dihasilkan sebagai daftar kotak untuk setiap gambar dalam batch
+        anchors = self.model.anchor_generator(images, features_list)
+        # anchors[0] bertipe [3234, 4] dengan format xmin, ymin, xmax, ymax
+        self.register_buffer("anchors", anchors[0].clone())
+        
+        # Simpan bobot box coder sebagai buffer konstan
+        weights = self.model.box_coder.weights
+        self.register_buffer("box_coder_weights", torch.tensor(weights, dtype=torch.float32))
+
+        # Daftarkan buffer normalisasi gambar dinamis dari model.transform
+        mean = self.model.transform.image_mean
+        std = self.model.transform.image_std
+        self.register_buffer("image_mean", torch.tensor(mean, dtype=torch.float32).view(1, 3, 1, 1))
+        self.register_buffer("image_std", torch.tensor(std, dtype=torch.float32).view(1, 3, 1, 1))
 
     def forward(self, x: torch.Tensor):
-        return self.model(list(x))
+        # 1. Jalankan Backbone secara manual untuk menghindari dynamic shape dari transform
+        # Terapkan normalisasi agar rentang nilai [0, 1] terpetakan ke rentang model [-1, 1]
+        x_norm = (x - self.image_mean) / self.image_std
+        features = self.model.backbone(x_norm)
+        if isinstance(features, torch.Tensor):
+            from collections import OrderedDict
+            features = OrderedDict([("0", features)])
+        features_list = list(features.values())
+        
+        # 2. Jalankan Head
+        head_outputs = self.model.head(features_list)
+        
+        bbox_regression = head_outputs["bbox_regression"] # [1, 3234, 4]
+        cls_logits = head_outputs["cls_logits"]           # [1, 3234, num_classes]
+        
+        # 3. Decode kotak secara internal menggunakan PyTorch
+        ax1 = self.anchors[:, 0]
+        ay1 = self.anchors[:, 1]
+        ax2 = self.anchors[:, 2]
+        ay2 = self.anchors[:, 3]
+        
+        aw = ax2 - ax1
+        ah = ay2 - ay1
+        acx = ax1 + 0.5 * aw
+        acy = ay1 + 0.5 * ah
+        
+        dx = bbox_regression[0, :, 0] / self.box_coder_weights[0]
+        dy = bbox_regression[0, :, 1] / self.box_coder_weights[1]
+        dw = bbox_regression[0, :, 2] / self.box_coder_weights[2]
+        dh = bbox_regression[0, :, 3] / self.box_coder_weights[3]
+        
+        gcx = dx * aw + acx
+        gcy = dy * ah + acy
+        gw = torch.exp(dw) * aw
+        gh = torch.exp(dh) * ah
+        
+        gx1 = gcx - 0.5 * gw
+        gy1 = gcy - 0.5 * gh
+        gx2 = gcx + 0.5 * gw
+        gy2 = gcy + 0.5 * gh
+        
+        decoded_boxes = torch.stack([gx1, gy1, gx2, gy2], dim=-1)
+        decoded_boxes = decoded_boxes.unsqueeze(0)
+        
+        # 4. Softmax kelas logits untuk mendapatkan probabilitas
+        scores = torch.softmax(cls_logits, dim=-1)
+        
+        return decoded_boxes, scores
 
 
 def export_onnx(
@@ -601,16 +674,50 @@ def export_onnx(
 
     try:
         with torch.no_grad():
-            torch.onnx.export(
-                wrapper,
-                dummy,
-                output_path,
-                opset_version=11,
-                input_names=["input"],
-                export_params=True,
-                verbose=False,
-                do_constant_folding=True,
-            )
+            try:
+                # Mencoba memaksakan eksportir warisan (legacy exporter) menggunakan dynamo=False
+                # untuk menghindari error GuardOnDataDependentSymNode pada PyTorch 2.4+
+                torch.onnx.export(
+                    wrapper,
+                    dummy,
+                    output_path,
+                    opset_version=11,
+                    input_names=["input"],
+                    output_names=["boxes", "scores"],
+                    export_params=True,
+                    verbose=False,
+                    do_constant_folding=True,
+                    dynamo=False,
+                )
+            except TypeError:
+                # Fallback untuk PyTorch versi lama yang belum memiliki parameter dynamo
+                torch.onnx.export(
+                    wrapper,
+                    dummy,
+                    output_path,
+                    opset_version=11,
+                    input_names=["input"],
+                    output_names=["boxes", "scores"],
+                    export_params=True,
+                    verbose=False,
+                    do_constant_folding=True,
+                )
+        
+        # Lakukan simplifikasi model secara otomatis dengan onnxsim
+        try:
+            print("  [Simplifikasi] Menyederhanakan graph ONNX dengan onnxsim...")
+            import onnx
+            from onnxsim import simplify
+            onnx_model = onnx.load(output_path)
+            simplified_model, check = simplify(onnx_model)
+            if check:
+                onnx.save(simplified_model, output_path)
+                print("  [Simplifikasi] Graph ONNX berhasil disederhanakan!")
+            else:
+                print("  [Simplifikasi] WARNING: Gagal memvalidasi graph hasil simplifikasi, menggunakan model asli.")
+        except Exception as sim_err:
+            print(f"  [Simplifikasi] Lewati simplifikasi otomatis: {sim_err}")
+            
         print(f"  [OK] ONNX berhasil disimpan: {output_path}")
         return True
     except Exception as e:

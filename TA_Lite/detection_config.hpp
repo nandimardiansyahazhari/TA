@@ -10,13 +10,14 @@ constexpr int kResHeight = 480;
 constexpr double kDangerDistanceCm = 350.0;
 
 // Camera calibration and class priors.
-constexpr double kFocalLength = 1469.86;
+constexpr double kFocalLengthCar = 1500.0;
+constexpr double kFocalLengthMotorbike = 1000.0;
 constexpr double kRealWidthCarCm = 169.0;
 constexpr double kRealWidthMotorbikeCm = 80.0;
 
 // Detection thresholds.
-constexpr float kCarConfidenceThreshold = 0.35F;
-constexpr float kMotorbikeConfidenceThreshold = 0.30F;
+constexpr float kCarConfidenceThreshold = 0.20F;
+constexpr float kMotorbikeConfidenceThreshold = 0.20F;
 constexpr float kNmsThreshold = 0.35F;
 constexpr float kIouMatchThreshold = 0.30F;
 
@@ -24,7 +25,8 @@ constexpr float kIouMatchThreshold = 0.30F;
 constexpr int kMinBoxWidthPx = 24;
 constexpr int kMinBoxHeightPx = 24;
 
-// Temporal smoothing factor (higher means more responsive, lower means smoother).
-constexpr float kTemporalAlpha = 0.55F;
+// Temporal smoothing factor (higher means more responsive, lower means
+// smoother).
+constexpr float kTemporalAlpha = 0.18F;
 
-}  // namespace ta_lite
+} // namespace ta_lite

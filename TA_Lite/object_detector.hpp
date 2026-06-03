@@ -13,6 +13,7 @@ struct DetectedObject {
     float confidence = 0.0F;
     cv::Rect box;
     double distanceCm = 0.0;
+    bool isApproaching = false;
 };
 
 class ObjectDetector {
@@ -32,6 +33,7 @@ private:
     cv::dnn::Net net_;
     std::vector<std::string> classes_;
     std::vector<DetectedObject> previousDetections_;
+    bool isYolo_ = false;
 };
 
 }  // namespace ta_lite

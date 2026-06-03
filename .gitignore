@@ -28,3 +28,10 @@ dataset/
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+
+# YOLO models and weights
+*.pt
+*.onnx
+runs/
+yolo_dataset/
+.vscode/

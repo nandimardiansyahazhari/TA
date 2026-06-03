@@ -1,56 +1,40 @@
-#include <opencv2/opencv.hpp>
-
+#include "detection_config.hpp"
+#include "object_detector.hpp"
 #include <algorithm>
 #include <chrono>
 #include <deque>
-#include <iostream>
 #include <fstream>
-#include <string>
-#include <vector>
+#include <iostream>
 
-#include "detection_config.hpp"
-#include "object_detector.hpp"
-
-using namespace cv;
 using namespace std;
+using namespace cv;
 using namespace std::chrono;
-using ta_lite::DetectedObject;
-using ta_lite::ObjectDetector;
+using namespace ta_lite;
 
 namespace {
 
-constexpr int kGraphWidth = 600;
-constexpr int kGraphHeight = 300;
-constexpr int kMaxHistory = 200;
+constexpr int kGraphWidth = 320;
+constexpr int kGraphHeight = 120;
+constexpr size_t kMaxHistory = 40;
 
-void putTextBg(Mat &img, const string &text, const Point &pos, double scale,
-               const Scalar &color, const Scalar &bg, int thickness = 2) {
+void putTextBg(Mat &img, const string &text, Point org, double fontScale,
+               Scalar textColor, Scalar bgColor, int thickness) {
   int baseline = 0;
-  const Size textSize =
-      getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
-  const Rect bgRect(pos.x, pos.y - textSize.height - 4, textSize.width + 6,
-                    textSize.height + baseline + 6);
-  rectangle(img, bgRect, bg, FILLED);
-  putText(img, text, Point(pos.x + 3, pos.y), FONT_HERSHEY_SIMPLEX, scale,
-          color, thickness);
+  Size textSize =
+      getTextSize(text, FONT_HERSHEY_SIMPLEX, fontScale, thickness, &baseline);
+  rectangle(img, org + Point(0, baseline),
+            org + Point(textSize.width, -textSize.height), bgColor, FILLED);
+  putText(img, text, org, FONT_HERSHEY_SIMPLEX, fontScale, textColor, thickness,
+          LINE_AA);
 }
 
 void drawGraph(Mat &img, const deque<double> &displayHistory,
                const deque<double> &inferenceHistory) {
   img.setTo(Scalar(242, 242, 242));
 
-  for (int y = 0; y < kGraphHeight; y += 50) {
-    line(img, Point(0, y), Point(kGraphWidth, y), Scalar(210, 210, 210), 1);
-    int val = static_cast<int>(60 - (y * 60.0 / kGraphHeight));
-    putText(img, to_string(val), Point(5, y + 15), FONT_HERSHEY_SIMPLEX, 0.4,
-            Scalar(150, 150, 150), 1);
-  }
-
-  const double maxVal = 60.0;
-  auto mapY = [maxVal](double val) {
-    double y = kGraphHeight - (val / maxVal) * kGraphHeight;
-    y = std::max(0.0, std::min(y, static_cast<double>(kGraphHeight - 1)));
-    return static_cast<int>(y);
+  auto mapY = [](double val) -> int {
+    double norm = min(1.0, max(0.0, val / 60.0));
+    return static_cast<int>(kGraphHeight - 10 - norm * (kGraphHeight - 20));
   };
 
   for (size_t i = 1; i < inferenceHistory.size(); ++i) {
@@ -79,20 +63,23 @@ void drawGraph(Mat &img, const deque<double> &displayHistory,
 
 } // namespace
 
-int main() {
-  VideoCapture cap(0);
-  if (!cap.isOpened()) {
-    cap.open(1);
-  }
-  if (!cap.isOpened()) {
-    cerr << "Error: No camera found." << endl;
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    cerr << "Usage: " << argv[0] << " <path_to_video>" << endl;
     return -1;
   }
 
-  cap.set(CAP_PROP_FRAME_WIDTH, ta_lite::kResWidth);
-  cap.set(CAP_PROP_FRAME_HEIGHT, ta_lite::kResHeight);
+  string videoPath = argv[1];
+  VideoCapture cap(videoPath);
+  if (!cap.isOpened()) {
+    cerr << "Error: Could not open video file: " << videoPath << endl;
+    return -1;
+  }
 
-  std::string modelPath = "/home/ansyah/TA-main/TA_Lite/output/yolov8n_vehicle.onnx";
+  cout << "Successfully opened video: " << videoPath << endl;
+
+  std::string modelPath =
+      "/home/ansyah/TA-main/TA_Lite/runs/detect/train/weights/best.onnx";
   std::string configPath = "";
 
   std::ifstream f(modelPath.c_str());
@@ -106,7 +93,8 @@ int main() {
     } else {
       modelPath = "/home/ansyah/TA-main/TA_Lite/MobileNetSSD_deploy.caffemodel";
       configPath = "/home/ansyah/TA-main/TA_Lite/MobileNetSSD_deploy.prototxt";
-      cout << "ONNX models not found, falling back to Caffe MobileNetSSD." << endl;
+      cout << "ONNX models not found, falling back to Caffe MobileNetSSD."
+           << endl;
     }
   }
 
@@ -128,14 +116,15 @@ int main() {
 
   cout << "Press ESC to exit." << endl;
 
-  namedWindow("Optimized Collision Warning", WINDOW_NORMAL);
+  namedWindow("Optimized Collision Warning (Video)", WINDOW_NORMAL);
   namedWindow("Performance Metrics", WINDOW_NORMAL);
-  resizeWindow("Optimized Collision Warning", 1280, 720);
+  resizeWindow("Optimized Collision Warning (Video)", 1280, 720);
   resizeWindow("Performance Metrics", 640, 400);
 
   while (true) {
     cap >> frame;
     if (frame.empty()) {
+      cout << "Reached end of video." << endl;
       break;
     }
 
@@ -162,7 +151,8 @@ int main() {
 
       rectangle(frame, detection.box, boxColor, 2);
 
-      const string directionSymbol = detection.isApproaching ? " [->]" : " [<-]";
+      const string directionSymbol =
+          detection.isApproaching ? " [->]" : " [<-]";
       const string label =
           detection.label + " " +
           to_string(static_cast<int>(detection.distanceCm)) + "cm " +
@@ -184,20 +174,27 @@ int main() {
       const double scale = 0.7;
       const int thickness = 2;
       int baseline = 0;
-      const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
+      const Size sz =
+          getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
       const Point pos(frame.cols / 2 - sz.width / 2, 45);
-      putTextBg(frame, text, pos, scale, Scalar(255, 255, 255), Scalar(0, 0, 255), thickness);
+      putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
+                Scalar(0, 0, 255), thickness);
     } else {
       const auto now = high_resolution_clock::now();
-      const bool showBlink = (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) % 2 == 0;
+      const bool showBlink =
+          (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) %
+              2 ==
+          0;
       if (showBlink) {
         const string text = "BISA MENYUSUL";
         const double scale = 0.7;
         const int thickness = 2;
         int baseline = 0;
-        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
+        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
+                                    thickness, &baseline);
         const Point pos(frame.cols / 2 - sz.width / 2, 45);
-        putTextBg(frame, text, pos, scale, Scalar(255, 255, 255), Scalar(0, 200, 0), thickness);
+        putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
+                  Scalar(0, 200, 0), thickness);
       }
     }
 
@@ -231,7 +228,7 @@ int main() {
               Point(10, frame.rows - 12), 0.6, Scalar(255, 80, 30),
               Scalar(0, 0, 0), 1);
 
-    imshow("Optimized Collision Warning", frame);
+    imshow("Optimized Collision Warning (Video)", frame);
     imshow("Performance Metrics", graphImg);
 
     if (waitKey(1) == 27) {

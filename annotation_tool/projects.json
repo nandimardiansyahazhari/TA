@@ -1,0 +1,58 @@
+{
+    "projects": [
+        {
+            "id": "default",
+            "name": "Default Project (TA_Lite)",
+            "images_dir": "/home/ansyah/TA-main/TA_Lite/yolo_dataset/images",
+            "labels_dir": "/home/ansyah/TA-main/TA_Lite/yolo_dataset/labels",
+            "classes": [
+                "car",
+                "motor"
+            ],
+            "format": "yolo",
+            "class_shortcuts": {
+                "0": "1",
+                "1": "2"
+            },
+            "class_colors": {
+                "0": "#3b82f6",
+                "1": "#f97316"
+            }
+        },
+        {
+            "id": "4a438667",
+            "name": "Update test project",
+            "images_dir": "/home/ansyah/TA-main/test_images_update",
+            "labels_dir": "/home/ansyah/TA-main/test_labels_update",
+            "classes": [
+                "car",
+                "bus"
+            ],
+            "format": "json",
+            "class_shortcuts": {
+                "0": "c",
+                "1": "b"
+            },
+            "class_colors": {
+                "0": "#ff00ff",
+                "1": "#00ffff"
+            }
+        },
+        {
+            "id": "949c7f7e",
+            "name": "Pandugo",
+            "images_dir": "/home/ansyah/mydata/dataset/gopro/pandugo2",
+            "labels_dir": "/home/ansyah/mydata/dataset/gopro/labels/pandugo2",
+            "classes": [
+                "car",
+                "motor"
+            ],
+            "format": "yolo",
+            "class_shortcuts": {
+                "0": "1",
+                "1": "2"
+            }
+        }
+    ],
+    "active_id": "default"
+}

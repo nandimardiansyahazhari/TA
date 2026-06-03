@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartAnnotator - YOLO Dataset Labeling Tool</title>
+    <!-- Google Fonts for premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for clean iconography -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom styling -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar -->
+        <header class="app-header">
+            <div class="brand">
+                <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
+                <h1>Cihuy App</h1>
+                <span class="badge">YOLOv8</span>
+                <span id="active-project-badge" class="badge badge-outline">Loading Project...</span>
+                <span id="active-format-badge" class="badge badge-accent">YOLO</span>
+            </div>
+
+            <div class="current-file-info">
+                <span id="current-image-name"><i class="fa-regular fa-image"></i> Select an image...</span>
+                <span id="image-resolution" class="meta-tag">0x0</span>
+                <span id="zoom-level" class="meta-tag">Zoom: 100%</span>
+            </div>
+
+            <div class="global-actions">
+                <button id="btn-save" class="btn btn-primary" title="Save Annotations (Ctrl+S)">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Annotations
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Workspace Area -->
+        <div class="workspace">
+            <!-- Left Sidebar: Dataset Gallery -->
+            <aside class="sidebar left-sidebar">
+                <div class="panel-section project-section">
+                    <span class="section-title">Active Project</span>
+                    <div class="project-selector-wrapper">
+                        <select id="project-selector" class="project-dropdown">
+                            <!-- Populated dynamically by JS -->
+                        </select>
+                        <button type="button" id="btn-project-settings" class="btn btn-sm btn-secondary" title="Project Settings & Shortcuts">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+                        <button type="button" id="btn-new-project" class="btn btn-sm btn-accent" title="Create New Project">
+                            <i class="fa-solid fa-folder-plus"></i> + New
+                        </button>
+                    </div>
+                </div>
+
+                <div class="panel-section tree-section">
+                    <span class="section-title">Local Directory Tree</span>
+                    <div id="directory-tree" class="directory-tree-container">
+                        <!-- Rendered recursively by JS -->
+                    </div>
+                </div>
+
+                <div class="panel-section upload-section">
+                    <span class="section-title">Local Upload</span>
+                    <div class="upload-dropzone" id="upload-dropzone">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Drag & drop files/folders here</span>
+                        <div class="upload-actions-wrapper">
+                            <button type="button" id="btn-browse-file" class="btn btn-sm btn-primary"
+                                title="Upload files"><i class="fa-solid fa-file-image"></i> + File</button>
+                            <button type="button" id="btn-browse-folder" class="btn btn-sm btn-accent"
+                                title="Upload an entire folder"><i class="fa-solid fa-folder-plus"></i> +
+                                Folder</button>
+                        </div>
+                        <input type="file" id="file-input" accept="image/*" style="display: none;" multiple>
+                        <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
+                    </div>
+                </div>
+
+                <div class="panel-section filter-section">
+                    <span class="section-title">Filter Images</span>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">All <span id="count-all" class="filter-count">0</span></button>
+                        <button class="filter-btn" data-filter="unannotated">Unannotated <span id="count-unannotated" class="filter-count">0</span></button>
+                        <button class="filter-btn" data-filter="annotated">Annotated <span id="count-annotated" class="filter-count">0</span></button>
+                    </div>
+                </div>
+
+                <div class="panel-section list-section">
+                    <div class="gallery-header">
+                        <span class="section-title">Images (<span id="image-count">0</span>)</span>
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="image-search" placeholder="Search files...">
+                        </div>
+                    </div>
+                    <ul id="image-list" class="image-gallery-list">
+                        <!-- Image items populated by JS -->
+                    </ul>
+                </div>
+            </aside>
+
+            <!-- Center Panel: Interactive Canvas Area -->
+            <main class="canvas-panel" id="canvas-panel">
+                <div class="canvas-container" id="canvas-container">
+                    <div class="canvas-viewport" id="canvas-viewport">
+                        <canvas id="annotation-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Floating canvas HUD for tooltips/indicators -->
+                <div class="canvas-hud">
+                    <div class="hud-item mode-indicator">
+                        <i id="mode-icon" class="fa-solid fa-mouse-pointer"></i>
+                        <span id="mode-text">Select / Edit Mode</span>
+                    </div>
+                    <div class="hud-item shortcut-tip">
+                        <span>Hold <strong>Ctrl + Drag</strong> or <strong>Middle-Click</strong> to Pan | Scroll to
+                            Zoom</span>
+                    </div>
+                </div>
+
+                <!-- Floating Mobile Zoom Controls (Vertical Pill on Right) -->
+                <div class="mobile-zoom-controls">
+                    <button type="button" id="mobile-btn-zoom-in" class="mobile-zoom-btn" title="Zoom In">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button type="button" id="mobile-btn-zoom-reset" class="mobile-zoom-btn" title="Reset Zoom">
+                        <i class="fa-solid fa-arrows-to-eye"></i>
+                    </button>
+                    <button type="button" id="mobile-btn-zoom-out" class="mobile-zoom-btn" title="Zoom Out">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                </div>
+
+                <!-- Mobile Quick Actions Floating Bar (Sticky & easy to reach on mobile) -->
+                <div class="mobile-quick-actions">
+                    <button type="button" id="mobile-btn-prev" class="mobile-action-btn" title="Previous Image">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    
+                    <button type="button" id="mobile-tool-select" class="mobile-action-btn active" title="Select / Edit Mode (V)">
+                        <i class="fa-solid fa-arrows-up-down-left-right"></i>
+                    </button>
+                    
+                    <button type="button" id="mobile-tool-draw" class="mobile-action-btn" title="Draw Box Mode (R)">
+                        <i class="fa-solid fa-square-plus"></i>
+                    </button>
+
+                    <button type="button" id="mobile-btn-delete" class="mobile-action-btn mobile-delete-btn" title="Delete Selected Box (Delete)">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+
+                    <div class="mobile-class-selector-wrapper">
+                        <select id="mobile-class-selector" class="mobile-class-dropdown">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <button type="button" id="mobile-btn-save" class="mobile-action-btn mobile-save-btn" title="Save (Ctrl+S)">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                    </button>
+                    
+                    <button type="button" id="mobile-btn-next" class="mobile-action-btn" title="Next Image">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+            </main>
+
+            <!-- Right Sidebar: Configuration, Classes, and Actions -->
+            <aside class="sidebar right-sidebar">
+                <!-- Auto-annotate card -->
+                <div class="panel-section auto-label-card">
+                    <h3 class="section-title"><i class="fa-solid fa-brain"></i> AI Auto-Labeling</h3>
+                    <p class="description">Automatically detect bounding boxes using the configured YOLO model.</p>
+                    <button id="btn-auto-annotate" class="btn btn-accent btn-block" title="Auto-annotate current image">
+                        <i class="fa-solid fa-robot"></i> Run Auto-Label Image
+                    </button>
+                    <button id="btn-auto-annotate-folder" class="btn btn-accent-outline btn-block"
+                        style="margin-top: 8px;" title="Auto-annotate all unannotated images in this folder">
+                        <i class="fa-solid fa-folder-tree"></i> Auto-Label Folder
+                    </button>
+                </div>
+                
+                <!-- Model Training card -->
+                <div class="panel-section training-card">
+                    <h3 class="section-title"><i class="fa-solid fa-graduation-cap"></i> Model Training</h3>
+                    <p class="description">Train a custom YOLOv8 model using your annotated images and frames.</p>
+                    <button id="btn-train-yolo" class="btn btn-primary btn-block" title="Train YOLO model on current project data">
+                        <i class="fa-solid fa-dumbbell"></i> Start YOLO Training
+                    </button>
+                </div>
+
+                <!-- Label selection -->
+                <div class="panel-section">
+                    <h3 class="section-title"><i class="fa-solid fa-tags"></i> Target Classes</h3>
+                    <div id="class-list" class="class-list-container">
+                        <!-- Classes populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Tool mode selection -->
+                <div class="panel-section">
+                    <h3 class="section-title"><i class="fa-solid fa-toolbox"></i> Tools</h3>
+                    <div class="tool-modes">
+                        <button id="tool-select" class="tool-btn active" title="Select / Move / Resize Box (V)">
+                            <i class="fa-solid fa-arrows-up-down-left-right"></i>
+                            <span>Select (V)</span>
+                        </button>
+                        <button id="tool-draw" class="tool-btn" title="Draw New Box (R)">
+                            <i class="fa-solid fa-square-plus"></i>
+                            <span>Draw (R)</span>
+                        </button>
+                    </div>
+                    <div class="quick-utils">
+                        <button id="btn-clear-boxes" class="btn btn-danger btn-sm btn-block">
+                            <i class="fa-solid fa-trash-can"></i> Clear All Boxes
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Keyboard shortcuts cheatsheet -->
+                <div class="panel-section cheatsheet-section">
+                    <h3 class="section-title"><i class="fa-solid fa-keyboard"></i> Hotkeys Cheatsheet</h3>
+                    <ul class="cheatsheet-list">
+                        <li><kbd>R</kbd> Switch to Draw mode</li>
+                        <li><kbd>V</kbd> Switch to Select mode</li>
+                        <li><kbd>A</kbd> / <kbd>←</kbd> Previous Image</li>
+                        <li><kbd>D</kbd> / <kbd>→</kbd> Next Image</li>
+                        <li><kbd>0</kbd> - <kbd>9</kbd> Select corresponding Class</li>
+                        <li><kbd>Del</kbd> / <kbd>Backspace</kbd> Delete selected Box</li>
+                        <li><kbd>Esc</kbd> Cancel drawing / Deselect</li>
+                        <li><kbd>Ctrl + S</kbd> Save Annotations</li>
+                    </ul>
+                </div>
+            </aside>
+        </div>
+
+        <!-- App Footer (Status indicator) -->
+        <footer class="app-footer">
+            <span id="save-status" class="save-status-idle"><i class="fa-solid fa-check-double"></i> All changes
+                saved</span>
+            <span class="credits">SmartAnnotator Engine &copy; 2026</span>
+        </footer>
+    </div>
+
+    <!-- New Project Creation Modal -->
+    <div id="project-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-folder-plus"></i> Create New Project</h2>
+                <button type="button" id="btn-close-modal" class="btn-close">&times;</button>
+            </div>
+            <form id="project-form" class="modal-form">
+                <div class="form-group">
+                    <label for="proj-name">Project Name</label>
+                    <input type="text" id="proj-name" placeholder="e.g. Traffic Monitor Cam 1" required>
+                </div>
+                <div class="form-group">
+                    <label for="proj-images-dir">Images Directory (Local Path)</label>
+                    <input type="text" id="proj-images-dir" placeholder="e.g. /home/user/dataset/images" required>
+                    <small>Absolute path to local folder containing your images</small>
+                </div>
+                <div class="form-group">
+                    <label for="proj-labels-dir">Labels Directory (Local Path)</label>
+                    <input type="text" id="proj-labels-dir" placeholder="e.g. /home/user/dataset/labels" required>
+                    <small>Absolute path to local folder where labels will be saved</small>
+                </div>
+                <div class="form-group">
+                    <label for="proj-classes">Class Labels (comma-separated)</label>
+                    <input type="text" id="proj-classes" placeholder="e.g. car, motorcycle, truck" required>
+                    <small>Classes mapped to indexes 0, 1, 2, 3...</small>
+                </div>
+                <div class="form-group">
+                    <label for="proj-shortcuts">Class Shortcuts (comma-separated, optional)</label>
+                    <input type="text" id="proj-shortcuts" placeholder="e.g. 2, 1 (must match Class Labels count)">
+                    <small>Keyboard hotkeys to select each class. Defaults to 0, 1, 2...</small>
+                </div>
+                <div class="form-group">
+                    <label for="proj-format">Save Annotation Format</label>
+                    <select id="proj-format" class="project-dropdown">
+                        <option value="yolo">YOLO (.txt)</option>
+                        <option value="voc">Pascal VOC XML (.xml)</option>
+                        <option value="json">JSON (.json)</option>
+                    </select>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" id="btn-cancel-project" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Project Settings & Shortcut Customization Modal -->
+    <div id="project-settings-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-gear"></i> Project Settings</h2>
+                <button type="button" id="btn-close-settings-modal" class="btn-close">&times;</button>
+            </div>
+            <form id="project-settings-form" class="modal-form">
+                <div class="form-group">
+                    <label for="settings-proj-name">Project Name</label>
+                    <input type="text" id="settings-proj-name" class="form-control" disabled style="opacity: 0.7;">
+                </div>
+                
+                <h3 style="margin: 18px 0 10px; font-size: 0.95rem; color: var(--text-primary); font-weight: 600;">
+                    Class Selection Customization (Hotkeys & Colors)
+                </h3>
+                
+                <div id="settings-classes-list" class="settings-classes-list">
+                    <!-- Populated dynamically via JS -->
+                </div>
+                
+                <div class="modal-actions" style="margin-top: 24px;">
+                    <button type="button" id="btn-cancel-settings" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Model Training Modal -->
+    <div id="training-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-graduation-cap"></i> Train YOLOv8 Model</h2>
+                <button type="button" id="btn-close-training-modal" class="btn-close">&times;</button>
+            </div>
+            <form id="training-form" class="modal-form">
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="train-epochs">Epochs</label>
+                        <input type="number" id="train-epochs" value="10" min="1" max="500" required style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="train-batch">Batch Size</label>
+                        <input type="number" id="train-batch" value="8" min="1" max="128" required style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="train-imgsz">Image Size</label>
+                        <select id="train-imgsz" class="project-dropdown" style="width: 100%; height: 38px;">
+                            <option value="320" selected>320x320 (Fast)</option>
+                            <option value="640">640x640 (Standard)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Training Progress & Logs</label>
+                    <div id="training-log-console" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: #a3e635; white-space: pre-wrap; line-height: 1.4;">Waiting to start training...</div>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <span id="training-status-text" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Status: Ready</span>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" id="btn-cancel-training" class="btn btn-secondary">Close</button>
+                        <button type="submit" id="btn-submit-train" class="btn btn-accent"><i class="fa-solid fa-play"></i> Start Training</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Core interactive scripts -->
+    <script src="{{ url_for('static', filename='annotator.js') }}"></script>
+</body>
+
+</html>
