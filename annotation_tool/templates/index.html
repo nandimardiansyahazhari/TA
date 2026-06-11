@@ -50,10 +50,12 @@
                         <select id="project-selector" class="project-dropdown">
                             <!-- Populated dynamically by JS -->
                         </select>
-                        <button type="button" id="btn-project-settings" class="btn btn-sm btn-secondary" title="Project Settings & Shortcuts">
+                        <button type="button" id="btn-project-settings" class="btn btn-sm btn-secondary"
+                            title="Project Settings & Shortcuts">
                             <i class="fa-solid fa-gear"></i>
                         </button>
-                        <button type="button" id="btn-new-project" class="btn btn-sm btn-accent" title="Create New Project">
+                        <button type="button" id="btn-new-project" class="btn btn-sm btn-accent"
+                            title="Create New Project">
                             <i class="fa-solid fa-folder-plus"></i> + New
                         </button>
                     </div>
@@ -86,9 +88,12 @@
                 <div class="panel-section filter-section">
                     <span class="section-title">Filter Images</span>
                     <div class="filter-buttons">
-                        <button class="filter-btn active" data-filter="all">All <span id="count-all" class="filter-count">0</span></button>
-                        <button class="filter-btn" data-filter="unannotated">Unannotated <span id="count-unannotated" class="filter-count">0</span></button>
-                        <button class="filter-btn" data-filter="annotated">Annotated <span id="count-annotated" class="filter-count">0</span></button>
+                        <button class="filter-btn active" data-filter="all">All <span id="count-all"
+                                class="filter-count">0</span></button>
+                        <button class="filter-btn" data-filter="unannotated">Unannotated <span id="count-unannotated"
+                                class="filter-count">0</span></button>
+                        <button class="filter-btn" data-filter="annotated">Annotated <span id="count-annotated"
+                                class="filter-count">0</span></button>
                     </div>
                 </div>
 
@@ -144,16 +149,18 @@
                     <button type="button" id="mobile-btn-prev" class="mobile-action-btn" title="Previous Image">
                         <i class="fa-solid fa-chevron-left"></i>
                     </button>
-                    
-                    <button type="button" id="mobile-tool-select" class="mobile-action-btn active" title="Select / Edit Mode (V)">
+
+                    <button type="button" id="mobile-tool-select" class="mobile-action-btn active"
+                        title="Select / Edit Mode (V)">
                         <i class="fa-solid fa-arrows-up-down-left-right"></i>
                     </button>
-                    
+
                     <button type="button" id="mobile-tool-draw" class="mobile-action-btn" title="Draw Box Mode (R)">
                         <i class="fa-solid fa-square-plus"></i>
                     </button>
 
-                    <button type="button" id="mobile-btn-delete" class="mobile-action-btn mobile-delete-btn" title="Delete Selected Box (Delete)">
+                    <button type="button" id="mobile-btn-delete" class="mobile-action-btn mobile-delete-btn"
+                        title="Delete Selected Box (Delete)">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
 
@@ -163,10 +170,11 @@
                         </select>
                     </div>
 
-                    <button type="button" id="mobile-btn-save" class="mobile-action-btn mobile-save-btn" title="Save (Ctrl+S)">
+                    <button type="button" id="mobile-btn-save" class="mobile-action-btn mobile-save-btn"
+                        title="Save (Ctrl+S)">
                         <i class="fa-solid fa-floppy-disk"></i>
                     </button>
-                    
+
                     <button type="button" id="mobile-btn-next" class="mobile-action-btn" title="Next Image">
                         <i class="fa-solid fa-chevron-right"></i>
                     </button>
@@ -187,12 +195,13 @@
                         <i class="fa-solid fa-folder-tree"></i> Auto-Label Folder
                     </button>
                 </div>
-                
+
                 <!-- Model Training card -->
                 <div class="panel-section training-card">
                     <h3 class="section-title"><i class="fa-solid fa-graduation-cap"></i> Model Training</h3>
                     <p class="description">Train a custom YOLOv8 model using your annotated images and frames.</p>
-                    <button id="btn-train-yolo" class="btn btn-primary btn-block" title="Train YOLO model on current project data">
+                    <button id="btn-train-yolo" class="btn btn-primary btn-block"
+                        title="Train YOLO model on current project data">
                         <i class="fa-solid fa-dumbbell"></i> Start YOLO Training
                     </button>
                 </div>
@@ -234,7 +243,7 @@
                         <li><kbd>A</kbd> / <kbd>←</kbd> Previous Image</li>
                         <li><kbd>D</kbd> / <kbd>→</kbd> Next Image</li>
                         <li><kbd>0</kbd> - <kbd>9</kbd> Select corresponding Class</li>
-                        <li><kbd>Del</kbd> / <kbd>Backspace</kbd> Delete selected Box</li>
+                        <li><kbd>E</kbd> / <kbd>Delete</kbd> Delete selected Box</li>
                         <li><kbd>Esc</kbd> Cancel drawing / Deselect</li>
                         <li><kbd>Ctrl + S</kbd> Save Annotations</li>
                     </ul>
@@ -290,7 +299,7 @@
                         <option value="json">JSON (.json)</option>
                     </select>
                 </div>
-                
+
                 <div class="modal-actions">
                     <button type="button" id="btn-cancel-project" class="btn btn-secondary">Cancel</button>
                     <button type="submit" class="btn btn-primary">Create Project</button>
@@ -311,15 +320,15 @@
                     <label for="settings-proj-name">Project Name</label>
                     <input type="text" id="settings-proj-name" class="form-control" disabled style="opacity: 0.7;">
                 </div>
-                
+
                 <h3 style="margin: 18px 0 10px; font-size: 0.95rem; color: var(--text-primary); font-weight: 600;">
                     Class Selection Customization (Hotkeys & Colors)
                 </h3>
-                
+
                 <div id="settings-classes-list" class="settings-classes-list">
                     <!-- Populated dynamically via JS -->
                 </div>
-                
+
                 <div class="modal-actions" style="margin-top: 24px;">
                     <button type="button" id="btn-cancel-settings" class="btn btn-secondary">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -339,7 +348,8 @@
                 <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
                     <div class="form-group" style="flex: 1;">
                         <label for="train-epochs">Epochs</label>
-                        <input type="number" id="train-epochs" value="10" min="1" max="500" required style="width: 100%;">
+                        <input type="number" id="train-epochs" value="10" min="1" max="500" required
+                            style="width: 100%;">
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label for="train-batch">Batch Size</label>
@@ -353,17 +363,22 @@
                         </select>
                     </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Training Progress & Logs</label>
-                    <div id="training-log-console" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: #a3e635; white-space: pre-wrap; line-height: 1.4;">Waiting to start training...</div>
+                    <div id="training-log-console"
+                        style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: #a3e635; white-space: pre-wrap; line-height: 1.4;">
+                        Waiting to start training...</div>
                 </div>
 
-                <div class="modal-actions" style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
-                    <span id="training-status-text" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Status: Ready</span>
+                <div class="modal-actions"
+                    style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <span id="training-status-text"
+                        style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Status: Ready</span>
                     <div style="display: flex; gap: 8px;">
                         <button type="button" id="btn-cancel-training" class="btn btn-secondary">Close</button>
-                        <button type="submit" id="btn-submit-train" class="btn btn-accent"><i class="fa-solid fa-play"></i> Start Training</button>
+                        <button type="submit" id="btn-submit-train" class="btn btn-accent"><i
+                                class="fa-solid fa-play"></i> Start Training</button>
                     </div>
                 </div>
             </form>

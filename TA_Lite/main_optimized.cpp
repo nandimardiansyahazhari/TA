@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <chrono>
 #include <deque>
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -19,8 +19,8 @@ using ta_lite::ObjectDetector;
 
 namespace {
 
-constexpr int kGraphWidth = 600;
-constexpr int kGraphHeight = 300;
+constexpr int kGraphWidth = 640;
+constexpr int kGraphHeight = 400;
 constexpr int kMaxHistory = 200;
 
 void putTextBg(Mat &img, const string &text, const Point &pos, double scale,
@@ -35,46 +35,188 @@ void putTextBg(Mat &img, const string &text, const Point &pos, double scale,
           color, thickness);
 }
 
-void drawGraph(Mat &img, const deque<double> &displayHistory,
-               const deque<double> &inferenceHistory) {
-  img.setTo(Scalar(242, 242, 242));
+void drawGraph(Mat &img, const vector<double> &displayHistory,
+               const vector<double> &inferenceHistory, bool isFinalSummary) {
+  img.setTo(Scalar(25, 25, 25)); // Premium dark background
 
-  for (int y = 0; y < kGraphHeight; y += 50) {
-    line(img, Point(0, y), Point(kGraphWidth, y), Scalar(210, 210, 210), 1);
-    int val = static_cast<int>(60 - (y * 60.0 / kGraphHeight));
-    putText(img, to_string(val), Point(5, y + 15), FONT_HERSHEY_SIMPLEX, 0.4,
-            Scalar(150, 150, 150), 1);
+  const int leftMargin = 70;
+  const int rightMargin = 30;
+  const int topMargin = 75;
+  const int bottomMargin = 45;
+  const int chartWidth = kGraphWidth - leftMargin - rightMargin;
+  const int chartHeight = kGraphHeight - topMargin - bottomMargin;
+
+  // Select the subset of data to plot
+  vector<double> dispPlot, inferPlot;
+  if (isFinalSummary) {
+    dispPlot = displayHistory;
+    inferPlot = inferenceHistory;
+  } else {
+    size_t startIdx = (displayHistory.size() > kMaxHistory)
+                          ? (displayHistory.size() - kMaxHistory)
+                          : 0;
+    dispPlot.assign(displayHistory.begin() + startIdx, displayHistory.end());
+    size_t startIdxInfer = (inferenceHistory.size() > kMaxHistory)
+                               ? (inferenceHistory.size() - kMaxHistory)
+                               : 0;
+    inferPlot.assign(inferenceHistory.begin() + startIdxInfer,
+                     inferenceHistory.end());
   }
 
-  const double maxVal = 60.0;
-  auto mapY = [maxVal](double val) {
-    double y = kGraphHeight - (val / maxVal) * kGraphHeight;
-    y = std::max(0.0, std::min(y, static_cast<double>(kGraphHeight - 1)));
-    return static_cast<int>(y);
+  // Calculate max FPS for Y-axis scale (with a minimum of 60.0)
+  double maxFps = 60.0;
+  for (double val : dispPlot)
+    if (val > maxFps)
+      maxFps = val;
+  for (double val : inferPlot)
+    if (val > maxFps)
+      maxFps = val;
+  // Round up to next multiple of 10 for clean grid lines
+  maxFps = ceil(maxFps / 10.0) * 10.0;
+
+  // Draw chart area background
+  rectangle(img, Rect(leftMargin, topMargin, chartWidth, chartHeight),
+            Scalar(35, 35, 35), FILLED);
+  // Draw chart area border
+  rectangle(img, Rect(leftMargin, topMargin, chartWidth, chartHeight),
+            Scalar(80, 80, 80), 1);
+
+  // Draw horizontal grid lines and Y-axis labels
+  int numYSteps = 5;
+  double stepVal = maxFps / numYSteps;
+  for (int i = 0; i <= numYSteps; ++i) {
+    double val = i * stepVal;
+    int y = topMargin + chartHeight -
+            static_cast<int>((val / maxFps) * chartHeight);
+    line(img, Point(leftMargin, y), Point(kGraphWidth - rightMargin, y),
+         Scalar(55, 55, 55), 1, LINE_AA);
+
+    char labelBuf[32];
+    snprintf(labelBuf, sizeof(labelBuf), "%d FPS", static_cast<int>(val));
+    putText(img, labelBuf, Point(10, y + 4), FONT_HERSHEY_SIMPLEX, 0.35,
+            Scalar(180, 180, 180), 1, LINE_AA);
+  }
+
+  // Draw vertical grid lines and X-axis labels
+  int numXSteps = 5;
+  size_t totalPoints = dispPlot.size();
+  for (int i = 0; i <= numXSteps; ++i) {
+    double pct = static_cast<double>(i) / numXSteps;
+    int x = leftMargin + static_cast<int>(pct * chartWidth);
+    line(img, Point(x, topMargin), Point(x, topMargin + chartHeight),
+         Scalar(55, 55, 55), 1, LINE_AA);
+
+    string xLabel;
+    if (isFinalSummary) {
+      int frameNum = static_cast<int>(
+          pct * (displayHistory.empty() ? 0 : (displayHistory.size() - 1)));
+      xLabel = "F" + to_string(frameNum);
+    } else {
+      int offset = static_cast<int>((pct - 1.0) * kMaxHistory);
+      xLabel = (offset == 0) ? "Now" : to_string(offset);
+    }
+    putText(img, xLabel, Point(x - 15, topMargin + chartHeight + 18),
+            FONT_HERSHEY_SIMPLEX, 0.35, Scalar(150, 150, 150), 1, LINE_AA);
+  }
+
+  // Mapping lambda
+  auto getPt = [&](size_t idx, double val) {
+    double xPct = (totalPoints > 1)
+                      ? (static_cast<double>(idx) / (totalPoints - 1))
+                      : 0.0;
+    int x = leftMargin + static_cast<int>(xPct * chartWidth);
+    double yPct = val / maxFps;
+    int y = topMargin + chartHeight - static_cast<int>(yPct * chartHeight);
+    y = std::max(topMargin, std::min(y, topMargin + chartHeight));
+    return Point(x, y);
   };
 
-  for (size_t i = 1; i < inferenceHistory.size(); ++i) {
-    line(img,
-         Point(static_cast<int>((i - 1) * kGraphWidth / kMaxHistory),
-               mapY(inferenceHistory[i - 1])),
-         Point(static_cast<int>(i * kGraphWidth / kMaxHistory),
-               mapY(inferenceHistory[i])),
-         Scalar(255, 70, 30), 2);
+  // Draw line graphs
+  if (inferPlot.size() > 1) {
+    for (size_t i = 1; i < inferPlot.size(); ++i) {
+      line(img, getPt(i - 1, inferPlot[i - 1]), getPt(i, inferPlot[i]),
+           Scalar(50, 100, 255), 2, LINE_AA);
+    }
+  }
+  if (dispPlot.size() > 1) {
+    for (size_t i = 1; i < dispPlot.size(); ++i) {
+      line(img, getPt(i - 1, dispPlot[i - 1]), getPt(i, dispPlot[i]),
+           Scalar(80, 220, 100), 2, LINE_AA);
+    }
   }
 
-  for (size_t i = 1; i < displayHistory.size(); ++i) {
-    line(img,
-         Point(static_cast<int>((i - 1) * kGraphWidth / kMaxHistory),
-               mapY(displayHistory[i - 1])),
-         Point(static_cast<int>(i * kGraphWidth / kMaxHistory),
-               mapY(displayHistory[i])),
-         Scalar(20, 180, 40), 2);
+  // Draw highlight dots at latest point + current value text
+  if (!inferPlot.empty()) {
+    Point lastPt = getPt(inferPlot.size() - 1, inferPlot.back());
+    circle(img, lastPt, 4, Scalar(50, 100, 255), FILLED, LINE_AA);
+    char valBuf[16];
+    snprintf(valBuf, sizeof(valBuf), "%.1f", inferPlot.back());
+    // Draw dotted horizontal reference line
+    line(img, Point(leftMargin, lastPt.y), lastPt, Scalar(120, 120, 120), 1,
+         LINE_4);
+    putText(img, valBuf, Point(lastPt.x - 45, lastPt.y - 6),
+            FONT_HERSHEY_SIMPLEX, 0.35, Scalar(50, 100, 255), 1, LINE_AA);
+  }
+  if (!dispPlot.empty()) {
+    Point lastPt = getPt(dispPlot.size() - 1, dispPlot.back());
+    circle(img, lastPt, 4, Scalar(80, 220, 100), FILLED, LINE_AA);
+    char valBuf[16];
+    snprintf(valBuf, sizeof(valBuf), "%.1f", dispPlot.back());
+    line(img, Point(leftMargin, lastPt.y), lastPt, Scalar(120, 120, 120), 1,
+         LINE_4);
+    putText(img, valBuf, Point(lastPt.x - 45, lastPt.y - 6),
+            FONT_HERSHEY_SIMPLEX, 0.35, Scalar(80, 220, 100), 1, LINE_AA);
   }
 
-  putTextBg(img, "Display FPS", Point(kGraphWidth - 150, 28), 0.45,
-            Scalar(20, 180, 40), Scalar(255, 255, 255), 1);
-  putTextBg(img, "Inference FPS", Point(kGraphWidth - 150, 55), 0.45,
-            Scalar(255, 70, 30), Scalar(255, 255, 255), 1);
+  // Compute statistics over the ENTIRE history
+  double curDisp = 0.0, avgDisp = 0.0, maxDisp = 0.0, minDisp = 0.0;
+  double curInfer = 0.0, avgInfer = 0.0, maxInfer = 0.0, minInfer = 0.0;
+
+  if (!displayHistory.empty()) {
+    curDisp = displayHistory.back();
+    maxDisp = *max_element(displayHistory.begin(), displayHistory.end());
+    minDisp = *min_element(displayHistory.begin(), displayHistory.end());
+    double sum = 0;
+    for (double v : displayHistory)
+      sum += v;
+    avgDisp = sum / displayHistory.size();
+  }
+  if (!inferenceHistory.empty()) {
+    curInfer = inferenceHistory.back();
+    maxInfer = *max_element(inferenceHistory.begin(), inferenceHistory.end());
+    minInfer = *min_element(inferenceHistory.begin(), inferenceHistory.end());
+    double sum = 0;
+    for (double v : inferenceHistory)
+      sum += v;
+    avgInfer = sum / inferenceHistory.size();
+  }
+
+  // Print Header / Title
+  string title = isFinalSummary ? "PERFORMANCE SUMMARY (COMPLETE RUN)"
+                                : "REAL-TIME PERFORMANCE METRICS";
+  putText(img, title, Point(leftMargin, 25), FONT_HERSHEY_SIMPLEX, 0.5,
+          Scalar(255, 255, 255), 1, LINE_AA);
+
+  // Draw legend markers and stat texts
+  char statBuf[128];
+
+  // Display FPS (Green)
+  circle(img, Point(leftMargin + 10, 45), 4, Scalar(80, 220, 100), FILLED,
+         LINE_AA);
+  snprintf(statBuf, sizeof(statBuf),
+           "Display FPS:   Cur %4.1f | Avg %4.1f | Max %4.1f | Min %4.1f",
+           curDisp, avgDisp, maxDisp, minDisp);
+  putText(img, statBuf, Point(leftMargin + 25, 49), FONT_HERSHEY_SIMPLEX, 0.38,
+          Scalar(200, 200, 200), 1, LINE_AA);
+
+  // Inference FPS (Orange)
+  circle(img, Point(leftMargin + 10, 63), 4, Scalar(50, 100, 255), FILLED,
+         LINE_AA);
+  snprintf(statBuf, sizeof(statBuf),
+           "Inference FPS: Cur %4.1f | Avg %4.1f | Max %4.1f | Min %4.1f",
+           curInfer, avgInfer, maxInfer, minInfer);
+  putText(img, statBuf, Point(leftMargin + 25, 67), FONT_HERSHEY_SIMPLEX, 0.38,
+          Scalar(200, 200, 200), 1, LINE_AA);
 }
 
 } // namespace
@@ -92,7 +234,8 @@ int main() {
   cap.set(CAP_PROP_FRAME_WIDTH, ta_lite::kResWidth);
   cap.set(CAP_PROP_FRAME_HEIGHT, ta_lite::kResHeight);
 
-  std::string modelPath = "/home/ansyah/TA-main/TA_Lite/output/yolov8n_vehicle.onnx";
+  std::string modelPath =
+      "/home/ansyah/TA-main/TA_Lite/output/yolov8n_vehicle.onnx";
   std::string configPath = "";
 
   std::ifstream f(modelPath.c_str());
@@ -106,7 +249,8 @@ int main() {
     } else {
       modelPath = "/home/ansyah/TA-main/TA_Lite/MobileNetSSD_deploy.caffemodel";
       configPath = "/home/ansyah/TA-main/TA_Lite/MobileNetSSD_deploy.prototxt";
-      cout << "ONNX models not found, falling back to Caffe MobileNetSSD." << endl;
+      cout << "ONNX models not found, falling back to Caffe MobileNetSSD."
+           << endl;
     }
   }
 
@@ -117,10 +261,10 @@ int main() {
   }
 
   Mat frame;
-  Mat graphImg(kGraphHeight, kGraphWidth, CV_8UC3, Scalar(242, 242, 242));
+  Mat graphImg(kGraphHeight, kGraphWidth, CV_8UC3, Scalar(25, 25, 25));
 
-  deque<double> displayFpsHistory(kMaxHistory, 0.0);
-  deque<double> inferenceFpsHistory(kMaxHistory, 0.0);
+  vector<double> displayFpsHistory;
+  vector<double> inferenceFpsHistory;
 
   double displayFPS = 0.0;
   int frameCounter = 0;
@@ -151,18 +295,19 @@ int main() {
     bool anyApproachingDanger = false;
     for (const auto &detection : detections) {
       Scalar boxColor(0, 255, 0); // Default Green
-      Scalar textColor(0, 0, 0); // Default Black
+      Scalar textColor(0, 0, 0);  // Default Black
       if (detection.label == "car") {
-        boxColor = Scalar(255, 0, 0); // Blue in BGR
+        boxColor = Scalar(255, 0, 0);      // Blue in BGR
         textColor = Scalar(255, 255, 255); // White text for blue background
       } else if (detection.label == "motor") {
         boxColor = Scalar(0, 255, 0); // Green in BGR
-        textColor = Scalar(0, 0, 0); // Black text for green background
+        textColor = Scalar(0, 0, 0);  // Black text for green background
       }
 
       rectangle(frame, detection.box, boxColor, 2);
 
-      const string directionSymbol = detection.isApproaching ? " [->]" : " [<-]";
+      const string directionSymbol =
+          detection.isApproaching ? " [->]" : " [<-]";
       const string label =
           detection.label + " " +
           to_string(static_cast<int>(detection.distanceCm)) + "cm " +
@@ -184,20 +329,27 @@ int main() {
       const double scale = 0.7;
       const int thickness = 2;
       int baseline = 0;
-      const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
+      const Size sz =
+          getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
       const Point pos(frame.cols / 2 - sz.width / 2, 45);
-      putTextBg(frame, text, pos, scale, Scalar(255, 255, 255), Scalar(0, 0, 255), thickness);
+      putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
+                Scalar(0, 0, 255), thickness);
     } else {
       const auto now = high_resolution_clock::now();
-      const bool showBlink = (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) % 2 == 0;
+      const bool showBlink =
+          (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) %
+              2 ==
+          0;
       if (showBlink) {
         const string text = "BISA MENYUSUL";
         const double scale = 0.7;
         const int thickness = 2;
         int baseline = 0;
-        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
+        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
+                                    thickness, &baseline);
         const Point pos(frame.cols / 2 - sz.width / 2, 45);
-        putTextBg(frame, text, pos, scale, Scalar(255, 255, 255), Scalar(0, 200, 0), thickness);
+        putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
+                  Scalar(0, 200, 0), thickness);
       }
     }
 
@@ -213,15 +365,9 @@ int main() {
 
       displayFpsHistory.push_back(displayFPS);
       inferenceFpsHistory.push_back(inferenceFPS);
-      if (displayFpsHistory.size() > kMaxHistory) {
-        displayFpsHistory.pop_front();
-      }
-      if (inferenceFpsHistory.size() > kMaxHistory) {
-        inferenceFpsHistory.pop_front();
-      }
     }
 
-    drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory);
+    drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory, false);
 
     putTextBg(frame, "Display FPS: " + to_string(static_cast<int>(displayFPS)),
               Point(10, frame.rows - 38), 0.6, Scalar(0, 255, 0),
@@ -241,5 +387,27 @@ int main() {
 
   cap.release();
   destroyAllWindows();
+
+  if (!displayFpsHistory.empty()) {
+    Mat summaryImg(kGraphHeight, kGraphWidth, CV_8UC3);
+    drawGraph(summaryImg, displayFpsHistory, inferenceFpsHistory, true);
+
+    // Save image to output directory
+    imwrite(
+        "/home/ansyah/TA-main/TA_Lite/output/performance_summary_optimized.png",
+        summaryImg);
+    cout << "\nSaved performance summary graph to: "
+            "/home/ansyah/TA-main/TA_Lite/output/"
+            "performance_summary_optimized.png"
+         << endl;
+
+    namedWindow("Performance Summary", WINDOW_NORMAL);
+    resizeWindow("Performance Summary", 640, 400);
+    imshow("Performance Summary", summaryImg);
+    cout << "Performance Summary window opened. Press any key to exit..."
+         << endl;
+    waitKey(0);
+  }
+
   return 0;
 }
