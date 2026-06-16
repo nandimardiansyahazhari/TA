@@ -1052,6 +1052,200 @@ def stop_training():
             
     return jsonify({"success": True, "message": "No active training process running."})
 
+@app.route('/api/analytics')
+def get_analytics():
+    proj = get_active_project()
+    if not proj:
+        return jsonify({"error": "No active project"}), 400
+        
+    images_dir = proj.get("images_dir")
+    labels_dir = proj.get("labels_dir")
+    classes = proj.get("classes", [])
+    fmt = proj.get("format", "yolo")
+    ext = get_active_label_ext()
+    
+    if not os.path.exists(images_dir):
+        return jsonify({
+            "total_images": 0,
+            "annotated_images": 0,
+            "unannotated_images": 0,
+            "class_counts": {c: 0 for c in classes},
+            "avg_boxes_per_image": 0.0
+        })
+        
+    total_images = 0
+    annotated_images = 0
+    unannotated_images = 0
+    
+    class_counts = {c: 0 for c in classes}
+    total_boxes = 0
+    
+    for root, _, files in os.walk(images_dir):
+        for file in files:
+            if file.lower().endswith(IMAGE_EXTENSIONS):
+                total_images += 1
+                
+                rel_path = os.path.relpath(os.path.join(root, file), images_dir)
+                basename = os.path.splitext(rel_path)[0]
+                label_path = os.path.join(labels_dir, basename + ext)
+                
+                has_boxes = False
+                boxes_in_image = 0
+                
+                if os.path.exists(label_path) and os.path.getsize(label_path) > 0:
+                    try:
+                        if fmt == "voc":
+                            boxes = load_voc_annotations(label_path, classes)
+                            boxes_in_image = len(boxes)
+                            for box in boxes:
+                                cid = box.get("class_id", 0)
+                                if 0 <= cid < len(classes):
+                                    class_counts[classes[cid]] += 1
+                                    has_boxes = True
+                        elif fmt == "json":
+                            boxes = load_json_annotations(label_path)
+                            boxes_in_image = len(boxes)
+                            for box in boxes:
+                                cid = int(box.get("class_id", 0))
+                                if 0 <= cid < len(classes):
+                                    class_counts[classes[cid]] += 1
+                                    has_boxes = True
+                        else:
+                            # YOLO
+                            with open(label_path, 'r') as lf:
+                                for line in lf:
+                                    parts = line.strip().split()
+                                    if len(parts) == 5:
+                                        try:
+                                            cid = int(parts[0])
+                                            if 0 <= cid < len(classes):
+                                                class_counts[classes[cid]] += 1
+                                                boxes_in_image += 1
+                                                has_boxes = True
+                                        except ValueError:
+                                            pass
+                    except Exception as e:
+                        print(f"Error parsing analytics for {label_path}: {e}")
+                
+                if has_boxes:
+                    annotated_images += 1
+                    total_boxes += boxes_in_image
+                else:
+                    unannotated_images += 1
+                    
+    avg_boxes = round(total_boxes / total_images, 2) if total_images > 0 else 0.0
+    
+    return jsonify({
+        "total_images": total_images,
+        "annotated_images": annotated_images,
+        "unannotated_images": unannotated_images,
+        "class_counts": class_counts,
+        "avg_boxes_per_image": avg_boxes
+    })
+
+@app.route('/api/video/process', methods=['POST'])
+@app.route('/api/video/process/<path:subpath>', methods=['POST'])
+def process_video(subpath=""):
+    proj = get_active_project()
+    if not proj:
+        return jsonify({"error": "No active project"}), 400
+        
+    if 'file' not in request.files:
+        return jsonify({"error": "No video file provided"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No video file selected"}), 400
+        
+    frame_step = int(request.form.get("frame_step", 10))
+    auto_annotate = request.form.get("auto_annotate", "true") == "true"
+    
+    images_dir = proj["images_dir"]
+    target_img_dir = os.path.join(images_dir, subpath) if subpath else images_dir
+    os.makedirs(target_img_dir, exist_ok=True)
+    
+    labels_dir = proj["labels_dir"]
+    target_lbl_dir = os.path.join(labels_dir, subpath) if subpath else labels_dir
+    os.makedirs(target_lbl_dir, exist_ok=True)
+    
+    scratch_dir = os.path.join(WORKSPACE_DIR, "annotation_tool", "scratch")
+    os.makedirs(scratch_dir, exist_ok=True)
+    temp_video_path = os.path.join(scratch_dir, "temp_upload.mp4")
+    file.save(temp_video_path)
+    
+    import cv2
+    cap = cv2.VideoCapture(temp_video_path)
+    if not cap.isOpened():
+        return jsonify({"error": "Failed to open video file"}), 400
+        
+    video_base = os.path.splitext(os.path.basename(file.filename))[0]
+    video_base = "".join([c if c.isalnum() or c in ('-', '_') else '_' for c in video_base])
+    
+    frame_idx = 0
+    extracted_count = 0
+    
+    model = None
+    if auto_annotate:
+        try:
+            model, _ = get_yolo_model()
+        except Exception as ex:
+            print(f"Error loading YOLO model for auto-annotate: {ex}")
+            auto_annotate = False
+            
+    classes = proj.get("classes", [])
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+        if frame_idx % frame_step == 0:
+            filename = f"{video_base}_frame_{frame_idx:06d}.jpg"
+            img_path = os.path.join(target_img_dir, filename)
+            cv2.imwrite(img_path, frame)
+            extracted_count += 1
+            
+            if auto_annotate and model:
+                try:
+                    results = model(img_path, verbose=False)
+                    boxes_data = []
+                    for r in results:
+                        for box in r.boxes:
+                            cls_id = int(box.cls[0].item())
+                            xyxy = box.xyxy[0].tolist()
+                            
+                            h_img, w_img = frame.shape[:2]
+                            x1, y1, x2, y2 = xyxy
+                            w_box = x2 - x1
+                            h_box = y2 - y1
+                            x_center = x1 + (w_box / 2)
+                            y_center = y1 + (h_box / 2)
+                            
+                            x_center /= w_img
+                            y_center /= h_img
+                            w_box /= w_img
+                            h_box /= h_img
+                            
+                            boxes_data.append(f"{cls_id} {x_center:.6f} {y_center:.6f} {w_box:.6f} {h_box:.6f}")
+                            
+                    if boxes_data:
+                        lbl_filename = f"{video_base}_frame_{frame_idx:06d}.txt"
+                        lbl_path = os.path.join(target_lbl_dir, lbl_filename)
+                        with open(lbl_path, 'w') as lf:
+                            lf.write("\n".join(boxes_data) + "\n")
+                except Exception as e:
+                    print(f"Auto annotation failed for frame {frame_idx}: {e}")
+                    
+        frame_idx += 1
+        
+    cap.release()
+    try:
+        os.remove(temp_video_path)
+    except Exception as ex:
+        print(f"Could not remove temp video: {ex}")
+        
+    return jsonify({"success": True, "count": extracted_count})
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 

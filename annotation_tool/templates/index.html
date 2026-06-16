@@ -33,7 +33,10 @@
                 <span id="zoom-level" class="meta-tag">Zoom: 100%</span>
             </div>
 
-            <div class="global-actions">
+            <div class="global-actions" style="display: flex; gap: 8px;">
+                <button id="btn-analytics" class="btn btn-accent-outline" title="Dataset Analytics">
+                    <i class="fa-solid fa-chart-pie"></i> Analytics
+                </button>
                 <button id="btn-save" class="btn btn-primary" title="Save Annotations (Ctrl+S)">
                     <i class="fa-solid fa-floppy-disk"></i> Save Annotations
                 </button>
@@ -73,12 +76,13 @@
                     <div class="upload-dropzone" id="upload-dropzone">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
                         <span>Drag & drop files/folders here</span>
-                        <div class="upload-actions-wrapper">
+                        <div class="upload-actions-wrapper" style="display: flex; gap: 4px; justify-content: center; width: 100%;">
                             <button type="button" id="btn-browse-file" class="btn btn-sm btn-primary"
-                                title="Upload files"><i class="fa-solid fa-file-image"></i> + File</button>
+                                style="flex: 1; padding: 6px 2px; font-size: 0.75rem;" title="Upload files"><i class="fa-solid fa-file-image"></i> + File</button>
                             <button type="button" id="btn-browse-folder" class="btn btn-sm btn-accent"
-                                title="Upload an entire folder"><i class="fa-solid fa-folder-plus"></i> +
-                                Folder</button>
+                                style="flex: 1; padding: 6px 2px; font-size: 0.75rem;" title="Upload an entire folder"><i class="fa-solid fa-folder-plus"></i> + Folder</button>
+                            <button type="button" id="btn-browse-video" class="btn btn-sm btn-accent-outline"
+                                style="flex: 1; padding: 6px 2px; font-size: 0.75rem;" title="Process Video"><i class="fa-solid fa-file-video"></i> + Video</button>
                         </div>
                         <input type="file" id="file-input" accept="image/*" style="display: none;" multiple>
                         <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
@@ -380,6 +384,100 @@
                         <button type="submit" id="btn-submit-train" class="btn btn-accent"><i
                                 class="fa-solid fa-play"></i> Start Training</button>
                     </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dataset Analytics Modal -->
+    <div id="analytics-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-chart-pie"></i> Dataset Analytics Dashboard</h2>
+                <button type="button" id="btn-close-analytics-modal" class="btn-close">&times;</button>
+            </div>
+            
+            <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+                <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; font-weight: 500;">Total Images</div>
+                    <div id="stat-total-images" style="font-size: 1.8rem; font-weight: 700; color: #fff;">0</div>
+                </div>
+                <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; font-weight: 500;">Annotated</div>
+                    <div id="stat-annotated-images" style="font-size: 1.8rem; font-weight: 700; color: var(--color-success);">0</div>
+                </div>
+                <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; font-weight: 500;">Unannotated</div>
+                    <div id="stat-unannotated-images" style="font-size: 1.8rem; font-weight: 700; color: var(--color-danger);">0</div>
+                </div>
+                <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; font-weight: 500;">Avg Boxes/Img</div>
+                    <div id="stat-avg-boxes" style="font-size: 1.8rem; font-weight: 700; color: var(--color-primary);">0.0</div>
+                </div>
+            </div>
+
+            <div class="progress-section" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem;">
+                    <span style="color: var(--text-secondary);">Annotation Progress</span>
+                    <span id="stat-progress-percent" style="font-weight: 600; color: var(--color-success);">0%</span>
+                </div>
+                <div class="progress-bar-container" style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                    <div id="stat-progress-bar" style="background: linear-gradient(90deg, var(--color-success) 0%, #34d399 100%); width: 0%; height: 100%; transition: width 0.8s ease-in-out;"></div>
+                </div>
+            </div>
+
+            <div class="chart-section" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 16px;">
+                <h3 style="margin-bottom: 16px; font-size: 0.95rem; color: #fff; font-weight: 600;"><i class="fa-solid fa-tags"></i> Object Class Distribution</h3>
+                <div id="analytics-class-chart" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Populated dynamically via JS -->
+                </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+                <button type="button" id="btn-close-analytics" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Processing Modal -->
+    <div id="video-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-file-video"></i> Extract Frames from Video</h2>
+                <button type="button" id="btn-close-video-modal" class="btn-close">&times;</button>
+            </div>
+            <form id="video-form" class="modal-form">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="video-file-input">Select Video File</label>
+                    <input type="file" id="video-file-input" accept="video/*" required style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: #fff; border-radius: 6px;">
+                </div>
+                
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 16px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="video-frame-step">Extract 1 frame every:</label>
+                        <input type="number" id="video-frame-step" value="10" min="1" max="1000" required style="width: 100%;">
+                        <small style="color: var(--text-secondary); font-size: 0.75rem;">frames (e.g. 10 skips 9 frames)</small>
+                    </div>
+                </div>
+
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+                    <input type="checkbox" id="video-auto-annotate" checked style="width: 18px; height: 18px; cursor: pointer;">
+                    <label for="video-auto-annotate" style="cursor: pointer; margin: 0; font-size: 0.85rem; color: var(--text-primary);">Auto-annotate extracted frames using YOLO</label>
+                </div>
+
+                <div id="video-progress-container" class="hidden" style="margin-bottom: 20px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
+                        <span id="video-progress-status" style="color: var(--color-primary); font-weight: 500;">Uploading video...</span>
+                        <span id="video-progress-percent" style="color: var(--text-secondary);">0%</span>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.08); height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div id="video-progress-bar" style="background: var(--color-primary); width: 0%; height: 100%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" id="btn-cancel-video" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" id="btn-submit-video" class="btn btn-accent"><i class="fa-solid fa-play"></i> Start Processing</button>
                 </div>
             </form>
         </div>

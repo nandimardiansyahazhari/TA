@@ -1,10 +1,14 @@
-#include "detection_config.hpp"
-#include "object_detector.hpp"
+#include <opencv2/opencv.hpp>
 #include <algorithm>
 #include <chrono>
 #include <deque>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
+
+#include "detection_config.hpp"
+#include "object_detector.hpp"
 
 using namespace std;
 using namespace cv;
@@ -39,7 +43,6 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
   const int chartWidth = kGraphWidth - leftMargin - rightMargin;
   const int chartHeight = kGraphHeight - topMargin - bottomMargin;
 
-  // Select the subset of data to plot
   vector<double> dispPlot, inferPlot;
   if (isFinalSummary) {
     dispPlot = displayHistory;
@@ -51,19 +54,14 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     inferPlot.assign(inferenceHistory.begin() + startIdxInfer, inferenceHistory.end());
   }
 
-  // Calculate max FPS for Y-axis scale (with a minimum of 60.0)
   double maxFps = 60.0;
   for (double val : dispPlot) if (val > maxFps) maxFps = val;
   for (double val : inferPlot) if (val > maxFps) maxFps = val;
-  // Round up to next multiple of 10 for clean grid lines
   maxFps = ceil(maxFps / 10.0) * 10.0;
 
-  // Draw chart area background
   rectangle(img, Rect(leftMargin, topMargin, chartWidth, chartHeight), Scalar(35, 35, 35), FILLED);
-  // Draw chart area border
   rectangle(img, Rect(leftMargin, topMargin, chartWidth, chartHeight), Scalar(80, 80, 80), 1);
 
-  // Draw horizontal grid lines and Y-axis labels
   int numYSteps = 5;
   double stepVal = maxFps / numYSteps;
   for (int i = 0; i <= numYSteps; ++i) {
@@ -76,7 +74,6 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     putText(img, labelBuf, Point(10, y + 4), FONT_HERSHEY_SIMPLEX, 0.35, Scalar(180, 180, 180), 1, LINE_AA);
   }
 
-  // Draw vertical grid lines and X-axis labels
   int numXSteps = 5;
   size_t totalPoints = dispPlot.size();
   for (int i = 0; i <= numXSteps; ++i) {
@@ -95,7 +92,6 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     putText(img, xLabel, Point(x - 15, topMargin + chartHeight + 18), FONT_HERSHEY_SIMPLEX, 0.35, Scalar(150, 150, 150), 1, LINE_AA);
   }
 
-  // Mapping lambda
   auto getPt = [&](size_t idx, double val) {
     double xPct = (totalPoints > 1) ? (static_cast<double>(idx) / (totalPoints - 1)) : 0.0;
     int x = leftMargin + static_cast<int>(xPct * chartWidth);
@@ -105,7 +101,6 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     return Point(x, y);
   };
 
-  // Draw line graphs
   if (inferPlot.size() > 1) {
     for (size_t i = 1; i < inferPlot.size(); ++i) {
       line(img, getPt(i - 1, inferPlot[i - 1]), getPt(i, inferPlot[i]), Scalar(50, 100, 255), 2, LINE_AA);
@@ -117,13 +112,11 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     }
   }
 
-  // Draw highlight dots at latest point + current value text
   if (!inferPlot.empty()) {
     Point lastPt = getPt(inferPlot.size() - 1, inferPlot.back());
     circle(img, lastPt, 4, Scalar(50, 100, 255), FILLED, LINE_AA);
     char valBuf[16];
     snprintf(valBuf, sizeof(valBuf), "%.1f", inferPlot.back());
-    // Draw dotted horizontal reference line
     line(img, Point(leftMargin, lastPt.y), lastPt, Scalar(120, 120, 120), 1, LINE_4);
     putText(img, valBuf, Point(lastPt.x - 45, lastPt.y - 6), FONT_HERSHEY_SIMPLEX, 0.35, Scalar(50, 100, 255), 1, LINE_AA);
   }
@@ -136,7 +129,6 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     putText(img, valBuf, Point(lastPt.x - 45, lastPt.y - 6), FONT_HERSHEY_SIMPLEX, 0.35, Scalar(80, 220, 100), 1, LINE_AA);
   }
 
-  // Compute statistics over the ENTIRE history
   double curDisp = 0.0, avgDisp = 0.0, maxDisp = 0.0, minDisp = 0.0;
   double curInfer = 0.0, avgInfer = 0.0, maxInfer = 0.0, minInfer = 0.0;
 
@@ -157,35 +149,69 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
     avgInfer = sum / inferenceHistory.size();
   }
 
-  // Print Header / Title
   string title = isFinalSummary ? "PERFORMANCE SUMMARY (COMPLETE RUN)" : "REAL-TIME PERFORMANCE METRICS";
   putText(img, title, Point(leftMargin, 25), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 255, 255), 1, LINE_AA);
 
-  // Draw legend markers and stat texts
   char statBuf[128];
-
-  // Display FPS (Green)
   circle(img, Point(leftMargin + 10, 45), 4, Scalar(80, 220, 100), FILLED, LINE_AA);
   snprintf(statBuf, sizeof(statBuf), "Display FPS:   Cur %4.1f | Avg %4.1f | Max %4.1f | Min %4.1f",
            curDisp, avgDisp, maxDisp, minDisp);
   putText(img, statBuf, Point(leftMargin + 25, 49), FONT_HERSHEY_SIMPLEX, 0.38, Scalar(200, 200, 200), 1, LINE_AA);
 
-  // Inference FPS (Orange)
   circle(img, Point(leftMargin + 10, 63), 4, Scalar(50, 100, 255), FILLED, LINE_AA);
   snprintf(statBuf, sizeof(statBuf), "Inference FPS: Cur %4.1f | Avg %4.1f | Max %4.1f | Min %4.1f",
            curInfer, avgInfer, maxInfer, minInfer);
   putText(img, statBuf, Point(leftMargin + 25, 67), FONT_HERSHEY_SIMPLEX, 0.38, Scalar(200, 200, 200), 1, LINE_AA);
 }
 
+string findModelFile(const string &filename, const vector<string> &candidates) {
+  ifstream f(filename.c_str());
+  if (f.good()) return filename;
+
+  for (const auto &candidate : candidates) {
+    ifstream fc(candidate.c_str());
+    if (fc.good()) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc < 2) {
-    cerr << "Usage: " << argv[0] << " <path_to_video>" << endl;
+  string videoPath = "";
+  bool headless = false;
+  string userModelPath = "";
+  string userConfigPath = "";
+
+  // CLI Arguments Parsing
+  for (int i = 1; i < argc; ++i) {
+    string arg = argv[i];
+    if (arg == "--headless" || arg == "-h") {
+      headless = true;
+    } else if ((arg == "--model" || arg == "-m") && i + 1 < argc) {
+      userModelPath = argv[++i];
+    } else if ((arg == "--config" || arg == "-cfg") && i + 1 < argc) {
+      userConfigPath = argv[++i];
+    } else if (arg == "--help") {
+      cout << "Usage: " << argv[0] << " <path_to_video> [options]\n"
+           << "Options:\n"
+           << "  --headless, -h      Run in headless mode (no window UI, output via terminal logs)\n"
+           << "  --model, -m <path>  Path to model (.onnx or .caffemodel)\n"
+           << "  --config, -cfg <path> Path to configuration (.prototxt for Caffe)\n"
+           << "  --help              Show this help message\n";
+      return 0;
+    } else if (videoPath.empty()) {
+      videoPath = arg;
+    }
+  }
+
+  if (videoPath.empty()) {
+    cerr << "Usage: " << argv[0] << " <path_to_video> [options]" << endl;
     return -1;
   }
 
-  string videoPath = argv[1];
   VideoCapture cap(videoPath);
   if (!cap.isOpened()) {
     cerr << "Error: Could not open video file: " << videoPath << endl;
@@ -194,23 +220,59 @@ int main(int argc, char **argv) {
 
   cout << "Successfully opened video: " << videoPath << endl;
 
-  std::string modelPath =
-      "/home/ansyah/TA-main/TA_Lite/runs/detect/train/weights/best.onnx";
-  std::string configPath = "";
+  // Determine model paths using relative smart fallbacks
+  string modelPath = "";
+  string configPath = "";
 
-  std::ifstream f(modelPath.c_str());
-  if (f.good()) {
-    cout << "Loading new YOLOv8 ONNX model: " << modelPath << endl;
+  if (!userModelPath.empty()) {
+    modelPath = userModelPath;
+    configPath = userConfigPath;
   } else {
-    modelPath = "/home/ansyah/TA-main/TA_Lite/output/vehicle_detector.onnx";
-    std::ifstream f2(modelPath.c_str());
-    if (f2.good()) {
-      cout << "Loading SSDLite320 ONNX model: " << modelPath << endl;
+    // Try to find the YOLOv8 model in workspace candidate locations
+    vector<string> yoloCandidates = {
+      "runs/detect/train/weights/best.onnx",
+      "../runs/detect/train/weights/best.onnx",
+      "../../runs/detect/train/weights/best.onnx",
+      "output/yolov8n_vehicle.onnx",
+      "../output/yolov8n_vehicle.onnx",
+      "../../output/yolov8n_vehicle.onnx",
+      "yolov8n_vehicle.onnx"
+    };
+    modelPath = findModelFile("runs/detect/train/weights/best.onnx", yoloCandidates);
+
+    if (!modelPath.empty()) {
+      cout << "Found YOLOv8 ONNX model: " << modelPath << endl;
     } else {
-      modelPath = "/home/ansyah/TA-main/TA_Lite/MobileNetSSD_deploy.caffemodel";
-      configPath = "/home/ansyah/TA-main/TA_Lite/MobileNetSSD_deploy.prototxt";
-      cout << "ONNX models not found, falling back to Caffe MobileNetSSD."
-           << endl;
+      vector<string> ssdCandidates = {
+        "output/vehicle_detector.onnx",
+        "../output/vehicle_detector.onnx",
+        "../../output/vehicle_detector.onnx",
+        "vehicle_detector.onnx"
+      };
+      modelPath = findModelFile("output/vehicle_detector.onnx", ssdCandidates);
+      if (!modelPath.empty()) {
+        cout << "Found SSDLite320 ONNX model: " << modelPath << endl;
+      } else {
+        vector<string> caffeCandidates = {
+          "MobileNetSSD_deploy.caffemodel",
+          "../MobileNetSSD_deploy.caffemodel",
+          "../../MobileNetSSD_deploy.caffemodel"
+        };
+        vector<string> protoCandidates = {
+          "MobileNetSSD_deploy.prototxt",
+          "../MobileNetSSD_deploy.prototxt",
+          "../../MobileNetSSD_deploy.prototxt"
+        };
+        modelPath = findModelFile("MobileNetSSD_deploy.caffemodel", caffeCandidates);
+        configPath = findModelFile("MobileNetSSD_deploy.prototxt", protoCandidates);
+        if (!modelPath.empty() && !configPath.empty()) {
+          cout << "Falling back to Caffe MobileNetSSD:\n  Model: " << modelPath 
+               << "\n  Config: " << configPath << endl;
+        } else {
+          cerr << "Error: Could not locate any model files. Placed them in output/ or the executable directory." << endl;
+          return -1;
+        }
+      }
     }
   }
 
@@ -231,12 +293,15 @@ int main(int argc, char **argv) {
   auto lastDisplayTick = high_resolution_clock::now();
   double currentSpeedKmh = 60.0;
 
-  cout << "Press ESC to exit. Press W to speed up, S to slow down." << endl;
-
-  namedWindow("Optimized Collision Warning (Video)", WINDOW_NORMAL);
-  namedWindow("Performance Metrics", WINDOW_NORMAL);
-  resizeWindow("Optimized Collision Warning (Video)", 1280, 720);
-  resizeWindow("Performance Metrics", 640, 400);
+  if (!headless) {
+    cout << "Press ESC to exit. Press W to speed up, S to slow down." << endl;
+    namedWindow("Optimized Collision Warning (Video)", WINDOW_NORMAL);
+    namedWindow("Performance Metrics", WINDOW_NORMAL);
+    resizeWindow("Optimized Collision Warning (Video)", 1280, 720);
+    resizeWindow("Performance Metrics", 640, 400);
+  } else {
+    cout << "Running in HEADLESS mode. Telemetry will output to terminal." << endl;
+  }
 
   while (true) {
     cap >> frame;
@@ -268,17 +333,18 @@ int main(int argc, char **argv) {
         textColor = Scalar(0, 0, 0); // Black text for green background
       }
 
-      rectangle(frame, detection.box, boxColor, 2);
-
-      const string directionSymbol =
-          detection.isApproaching ? " [->]" : " [<-]";
-      const string label =
-          detection.label + " " +
-          to_string(static_cast<int>(detection.distanceCm)) + "cm " +
-          to_string(static_cast<int>(detection.confidence * 100.0F)) + "%" +
-          directionSymbol;
-      putTextBg(frame, label, Point(detection.box.x, max(20, detection.box.y)),
-                0.45, textColor, boxColor, 1);
+      if (!headless) {
+        rectangle(frame, detection.box, boxColor, 2);
+        const string directionSymbol =
+            detection.isApproaching ? " [->]" : " [<-]";
+        const string label =
+            detection.label + " " +
+            to_string(static_cast<int>(detection.distanceCm)) + "cm " +
+            to_string(static_cast<int>(detection.confidence * 100.0F)) + "%" +
+            directionSymbol;
+        putTextBg(frame, label, Point(detection.box.x, max(20, detection.box.y)),
+                  0.45, textColor, boxColor, 1);
+      }
 
       if (detection.distanceCm < dangerDistanceCm) {
         closestDistance = min(closestDistance, detection.distanceCm);
@@ -288,32 +354,34 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (anyApproachingDanger) {
-      const string text = "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI";
-      const double scale = 0.7;
-      const int thickness = 2;
-      int baseline = 0;
-      const Size sz =
-          getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
-      const Point pos(frame.cols / 2 - sz.width / 2, 45);
-      putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
-                Scalar(0, 0, 255), thickness);
-    } else {
-      const auto now = high_resolution_clock::now();
-      const bool showBlink =
-          (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) %
-              2 ==
-          0;
-      if (showBlink) {
-        const string text = "BISA MENYUSUL";
+    if (!headless) {
+      if (anyApproachingDanger) {
+        const string text = "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI";
         const double scale = 0.7;
         const int thickness = 2;
         int baseline = 0;
-        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
-                                    thickness, &baseline);
+        const Size sz =
+            getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
         const Point pos(frame.cols / 2 - sz.width / 2, 45);
         putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
-                  Scalar(0, 200, 0), thickness);
+                  Scalar(0, 0, 255), thickness);
+      } else {
+        const auto now = high_resolution_clock::now();
+        const bool showBlink =
+            (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) %
+                2 ==
+            0;
+        if (showBlink) {
+          const string text = "BISA MENYUSUL";
+          const double scale = 0.7;
+          const int thickness = 2;
+          int baseline = 0;
+          const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
+                                      thickness, &baseline);
+          const Point pos(frame.cols / 2 - sz.width / 2, 45);
+          putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
+                    Scalar(0, 200, 0), thickness);
+        }
       }
     }
 
@@ -329,58 +397,90 @@ int main(int argc, char **argv) {
 
       displayFpsHistory.push_back(displayFPS);
       inferenceFpsHistory.push_back(inferenceFPS);
+
+      if (headless) {
+        cout << "[Telemetry] Disp FPS: " << fixed << setprecision(1) << displayFPS 
+             << " | Infer FPS: " << inferenceFPS 
+             << " | Speed: " << currentSpeedKmh << " km/h"
+             << " | Safe Gap: " << (dangerDistanceCm / 100.0) << "m"
+             << " | Detections: " << detections.size()
+             << " | Warning: " << (anyApproachingDanger ? "AWAS! MENDAHULUI" : "AMAN") << endl;
+      }
     }
 
-    drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory, false);
+    if (!headless) {
+      drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory, false);
 
-    putTextBg(frame, "Display FPS: " + to_string(static_cast<int>(displayFPS)),
-              Point(10, frame.rows - 38), 0.6, Scalar(0, 255, 0),
-              Scalar(0, 0, 0), 1);
-    putTextBg(frame,
-              "Inference FPS: " + to_string(static_cast<int>(inferenceFPS)),
-              Point(10, frame.rows - 12), 0.6, Scalar(255, 80, 30),
-              Scalar(0, 0, 0), 1);
+      putTextBg(frame, "Display FPS: " + to_string(static_cast<int>(displayFPS)),
+                Point(10, frame.rows - 38), 0.6, Scalar(0, 255, 0),
+                Scalar(0, 0, 0), 1);
+      putTextBg(frame,
+                "Inference FPS: " + to_string(static_cast<int>(inferenceFPS)),
+                Point(10, frame.rows - 12), 0.6, Scalar(255, 80, 30),
+                Scalar(0, 0, 0), 1);
 
-    // Draw simulated speed and dynamic warning threshold HUD
-    string speedText = "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h (W/S)";
-    char safeDistBuf[64];
-    snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm", dangerDistanceCm / 100.0);
-    string safeText(safeDistBuf);
+      string speedText = "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h (W/S)";
+      char safeDistBuf[64];
+      snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm", dangerDistanceCm / 100.0);
+      string safeText(safeDistBuf);
 
-    putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6, Scalar(255, 255, 255),
-              Scalar(120, 40, 40), 1);
-    putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6, Scalar(255, 255, 255),
-              Scalar(120, 40, 40), 1);
+      putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6, Scalar(255, 255, 255),
+                Scalar(120, 40, 40), 1);
+      putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6, Scalar(255, 255, 255),
+                Scalar(120, 40, 40), 1);
 
-    imshow("Optimized Collision Warning (Video)", frame);
-    imshow("Performance Metrics", graphImg);
+      imshow("Optimized Collision Warning (Video)", frame);
+      imshow("Performance Metrics", graphImg);
 
-    int key = waitKey(1);
-    if (key == 27) {
-      break;
-    } else if (key == 'w' || key == 'W') {
-      currentSpeedKmh = min(currentSpeedKmh + 5.0, 120.0);
-    } else if (key == 's' || key == 'S') {
-      currentSpeedKmh = max(currentSpeedKmh - 5.0, 0.0);
+      int key = waitKey(1);
+      if (key == 27) {
+        break;
+      } else if (key == 'w' || key == 'W') {
+        currentSpeedKmh = min(currentSpeedKmh + 5.0, 120.0);
+      } else if (key == 's' || key == 'S') {
+        currentSpeedKmh = max(currentSpeedKmh - 5.0, 0.0);
+      }
+    } else {
+      waitKey(1);
     }
   }
 
   cap.release();
-  destroyAllWindows();
+  if (!headless) {
+    destroyAllWindows();
+  }
 
   if (!displayFpsHistory.empty()) {
     Mat summaryImg(kGraphHeight, kGraphWidth, CV_8UC3);
     drawGraph(summaryImg, displayFpsHistory, inferenceFpsHistory, true);
 
-    // Save image to output directory
-    imwrite("/home/ansyah/TA-main/TA_Lite/output/performance_summary_video.png", summaryImg);
-    cout << "\nSaved performance summary graph to: /home/ansyah/TA-main/TA_Lite/output/performance_summary_video.png" << endl;
+    // Save image with fallback paths
+    vector<string> savePaths = {
+      "output/performance_summary_video.png",
+      "../output/performance_summary_video.png",
+      "../../output/performance_summary_video.png",
+      "performance_summary_video.png"
+    };
 
-    namedWindow("Performance Summary", WINDOW_NORMAL);
-    resizeWindow("Performance Summary", 640, 400);
-    imshow("Performance Summary", summaryImg);
-    cout << "Performance Summary window opened. Press any key to exit..." << endl;
-    waitKey(0);
+    bool saved = false;
+    for (const auto &path : savePaths) {
+      if (imwrite(path, summaryImg)) {
+        cout << "\nSaved performance summary graph to: " << path << endl;
+        saved = true;
+        break;
+      }
+    }
+    if (!saved) {
+      cerr << "\nError: Could not save performance summary graph to any candidate paths." << endl;
+    }
+
+    if (!headless) {
+      namedWindow("Performance Summary", WINDOW_NORMAL);
+      resizeWindow("Performance Summary", 640, 400);
+      imshow("Performance Summary", summaryImg);
+      cout << "Performance Summary window opened. Press any key to exit..." << endl;
+      waitKey(0);
+    }
   }
 
   return 0;

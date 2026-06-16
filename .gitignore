@@ -35,3 +35,4 @@ __pycache__/
 runs/
 yolo_dataset/
 .vscode/
+TA_Lite/Miniconda3-latest-Linux-x86_64.sh

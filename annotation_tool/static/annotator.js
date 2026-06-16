@@ -130,7 +130,35 @@ const elements = {
     trainImgsz: document.getElementById('train-imgsz'),
     trainingLogConsole: document.getElementById('training-log-console'),
     trainingStatusText: document.getElementById('training-status-text'),
-    btnSubmitTrain: document.getElementById('btn-submit-train')
+    btnSubmitTrain: document.getElementById('btn-submit-train'),
+    
+    // Analytics Dashboard Elements
+    btnAnalytics: document.getElementById('btn-analytics'),
+    analyticsModal: document.getElementById('analytics-modal'),
+    btnCloseAnalyticsModal: document.getElementById('btn-close-analytics-modal'),
+    btnCloseAnalytics: document.getElementById('btn-close-analytics'),
+    statTotalImages: document.getElementById('stat-total-images'),
+    statAnnotatedImages: document.getElementById('stat-annotated-images'),
+    statUnannotatedImages: document.getElementById('stat-unannotated-images'),
+    statAvgBoxes: document.getElementById('stat-avg-boxes'),
+    statProgressPercent: document.getElementById('stat-progress-percent'),
+    statProgressBar: document.getElementById('stat-progress-bar'),
+    analyticsClassChart: document.getElementById('analytics-class-chart'),
+
+    // Video Processing Elements
+    btnBrowseVideo: document.getElementById('btn-browse-video'),
+    videoModal: document.getElementById('video-modal'),
+    btnCloseVideoModal: document.getElementById('btn-close-video-modal'),
+    btnCancelVideo: document.getElementById('btn-cancel-video'),
+    videoForm: document.getElementById('video-form'),
+    videoFileInput: document.getElementById('video-file-input'),
+    videoFrameStep: document.getElementById('video-frame-step'),
+    videoAutoAnnotate: document.getElementById('video-auto-annotate'),
+    videoProgressContainer: document.getElementById('video-progress-container'),
+    videoProgressStatus: document.getElementById('video-progress-status'),
+    videoProgressPercent: document.getElementById('video-progress-percent'),
+    videoProgressBar: document.getElementById('video-progress-bar'),
+    btnSubmitVideo: document.getElementById('btn-submit-video')
 };
 
 // Canvas context
@@ -538,6 +566,169 @@ function stopTrainingPoll() {
     if (trainingPollInterval) {
         clearInterval(trainingPollInterval);
         trainingPollInterval = null;
+    }
+}
+
+// Analytics Dashboard Modal controls
+async function openAnalyticsModal() {
+    elements.analyticsModal.classList.remove('hidden');
+    
+    // Reset values to loading states
+    elements.statTotalImages.textContent = '...';
+    elements.statAnnotatedImages.textContent = '...';
+    elements.statUnannotatedImages.textContent = '...';
+    elements.statAvgBoxes.textContent = '...';
+    elements.statProgressPercent.textContent = '0%';
+    elements.statProgressBar.style.width = '0%';
+    elements.analyticsClassChart.innerHTML = '<div style="color: var(--text-secondary); font-size: 0.8rem; text-align: center; padding: 12px;">Loading charts...</div>';
+
+    try {
+        const response = await fetch('/api/analytics');
+        const data = await response.json();
+        
+        elements.statTotalImages.textContent = data.total_images;
+        elements.statAnnotatedImages.textContent = data.annotated_images;
+        elements.statUnannotatedImages.textContent = data.unannotated_images;
+        elements.statAvgBoxes.textContent = data.avg_boxes_per_image;
+        
+        const progress = data.total_images > 0 ? Math.round((data.annotated_images / data.total_images) * 100) : 0;
+        elements.statProgressPercent.textContent = `${progress}%`;
+        elements.statProgressBar.style.width = `${progress}%`;
+        
+        // Populate chart
+        elements.analyticsClassChart.innerHTML = '';
+        const counts = Object.values(data.class_counts);
+        const maxCount = Math.max(...counts, 1);
+        
+        Object.keys(data.class_counts).forEach(className => {
+            const count = data.class_counts[className];
+            const percent = (count / maxCount) * 100;
+            
+            // Map className to classId to retrieve custom color
+            const classId = Object.keys(state.classes).find(key => state.classes[key] === className);
+            const barColor = getClassColor(classId !== undefined ? parseInt(classId) : 0);
+            
+            const row = document.createElement('div');
+            row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;';
+            row.innerHTML = `
+                <span style="width: 100px; color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-weight: 500;">${className}</span>
+                <div style="flex: 1; margin: 0 12px; background: rgba(255,255,255,0.06); height: 16px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.03);">
+                    <div style="background: ${barColor}; width: ${percent}%; height: 100%; border-radius: 8px; transition: width 0.6s ease;"></div>
+                </div>
+                <span style="width: 40px; text-align: right; font-weight: 600; color: #fff;">${count}</span>
+            `;
+            elements.analyticsClassChart.appendChild(row);
+        });
+        
+        if (counts.length === 0) {
+            elements.analyticsClassChart.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 12px;">No objects detected in labels yet.</div>';
+        }
+        
+    } catch (err) {
+        console.error("Failed to load analytics data", err);
+        elements.analyticsClassChart.innerHTML = '<div style="color: var(--color-danger); font-size: 0.8rem; text-align: center; padding: 12px;">Error loading data.</div>';
+    }
+}
+
+function closeAnalyticsModal() {
+    elements.analyticsModal.classList.add('hidden');
+}
+
+// Video Processing Modal controls
+function openVideoModal() {
+    elements.videoModal.classList.remove('hidden');
+    elements.videoForm.reset();
+    elements.videoProgressContainer.classList.add('hidden');
+    elements.videoProgressBar.style.width = '0%';
+    elements.videoProgressPercent.textContent = '0%';
+    elements.btnSubmitVideo.disabled = false;
+    elements.btnCancelVideo.disabled = false;
+}
+
+function closeVideoModal() {
+    elements.videoModal.classList.add('hidden');
+}
+
+async function handleVideoSubmit(e) {
+    e.preventDefault();
+    
+    const file = elements.videoFileInput.files[0];
+    const frameStep = parseInt(elements.videoFrameStep.value);
+    const autoAnnotate = elements.videoAutoAnnotate.checked;
+    
+    if (!file) {
+        alert("Please select a video file first.");
+        return;
+    }
+    
+    elements.videoProgressContainer.classList.remove('hidden');
+    elements.videoProgressStatus.textContent = "Uploading video...";
+    elements.videoProgressPercent.textContent = "0%";
+    elements.videoProgressBar.style.width = "0%";
+    elements.btnSubmitVideo.disabled = true;
+    elements.btnCancelVideo.disabled = true;
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("frame_step", frameStep);
+    formData.append("auto_annotate", autoAnnotate);
+    
+    try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `/api/video/process/${state.currentSubpath}`);
+        
+        xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable) {
+                const percent = Math.round((event.loaded / event.total) * 90);
+                elements.videoProgressPercent.textContent = `${percent}%`;
+                elements.videoProgressBar.style.width = `${percent}%`;
+                if (percent >= 90) {
+                    elements.videoProgressStatus.textContent = "Processing and extracting frames (please wait)...";
+                }
+            }
+        });
+        
+        xhr.addEventListener("load", async () => {
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                elements.videoProgressPercent.textContent = "100%";
+                elements.videoProgressBar.style.width = "100%";
+                elements.videoProgressStatus.textContent = `Success: Extracted ${data.count} frames!`;
+                
+                setTimeout(async () => {
+                    closeVideoModal();
+                    showStatus("Video processed successfully.", "idle");
+                    await fetchTree();
+                    await fetchImages();
+                }, 1500);
+            } else {
+                let errText = "Unknown error occurred.";
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    errText = data.error || errText;
+                } catch(e) {}
+                
+                elements.videoProgressStatus.textContent = `Error: ${errText}`;
+                elements.videoProgressStatus.style.color = "var(--color-danger)";
+                elements.btnSubmitVideo.disabled = false;
+                elements.btnCancelVideo.disabled = false;
+            }
+        });
+        
+        xhr.addEventListener("error", () => {
+            elements.videoProgressStatus.textContent = "Error: Network connection failed.";
+            elements.videoProgressStatus.style.color = "var(--color-danger)";
+            elements.btnSubmitVideo.disabled = false;
+            elements.btnCancelVideo.disabled = false;
+        });
+        
+        xhr.send(formData);
+        
+    } catch (err) {
+        console.error("Video upload/process error", err);
+        elements.videoProgressStatus.textContent = `Error: ${err.message}`;
+        elements.btnSubmitVideo.disabled = false;
+        elements.btnCancelVideo.disabled = false;
     }
 }
 
@@ -1527,6 +1718,31 @@ function setupEventListeners() {
     }
     if (elements.trainingForm) {
         elements.trainingForm.addEventListener('submit', handleTrainingSubmit);
+    }
+
+    // Analytics events
+    if (elements.btnAnalytics) {
+        elements.btnAnalytics.addEventListener('click', openAnalyticsModal);
+    }
+    if (elements.btnCloseAnalyticsModal) {
+        elements.btnCloseAnalyticsModal.addEventListener('click', closeAnalyticsModal);
+    }
+    if (elements.btnCloseAnalytics) {
+        elements.btnCloseAnalytics.addEventListener('click', closeAnalyticsModal);
+    }
+
+    // Video processing events
+    if (elements.btnBrowseVideo) {
+        elements.btnBrowseVideo.addEventListener('click', openVideoModal);
+    }
+    if (elements.btnCloseVideoModal) {
+        elements.btnCloseVideoModal.addEventListener('click', closeVideoModal);
+    }
+    if (elements.btnCancelVideo) {
+        elements.btnCancelVideo.addEventListener('click', closeVideoModal);
+    }
+    if (elements.videoForm) {
+        elements.videoForm.addEventListener('submit', handleVideoSubmit);
     }
 
     // Mobile specific quick control listeners
