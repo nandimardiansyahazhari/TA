@@ -93,10 +93,10 @@ std::vector<DetectedObject> ObjectDetector::infer(const cv::Mat &frame) {
         float h = outMat.at<float>(i, 3);
 
         // Skalakan ke resolusi frame asli
-        int left = static_cast<int>((cx - 0.5f * w) * (frame.cols / 320.0f));
-        int top = static_cast<int>((cy - 0.5f * h) * (frame.rows / 320.0f));
-        int width = static_cast<int>(w * (frame.cols / 320.0f));
-        int height = static_cast<int>(h * (frame.rows / 320.0f));
+        int left = static_cast<int>((cx - 0.5f * w) * frame.cols);
+        int top = static_cast<int>((cy - 0.5f * h) * frame.rows);
+        int width = static_cast<int>(w * frame.cols);
+        int height = static_cast<int>(h * frame.rows);
 
         left = std::max(0, std::min(left, frame.cols - 1));
         top = std::max(0, std::min(top, frame.rows - 1));
