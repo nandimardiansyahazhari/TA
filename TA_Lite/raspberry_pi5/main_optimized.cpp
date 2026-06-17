@@ -1,9 +1,9 @@
-#include <opencv2/opencv.hpp>
 #include <algorithm>
 #include <chrono>
 #include <deque>
 #include <fstream>
 #include <iostream>
+#include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
 
@@ -204,7 +204,8 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
 // Helper to look for file in candidate locations
 string findModelFile(const string &filename, const vector<string> &candidates) {
   ifstream f(filename.c_str());
-  if (f.good()) return filename;
+  if (f.good())
+    return filename;
 
   for (const auto &candidate : candidates) {
     ifstream fc(candidate.c_str());
@@ -237,10 +238,13 @@ int main(int argc, char **argv) {
     } else if (arg == "--help") {
       cout << "Usage: " << argv[0] << " [options]\n"
            << "Options:\n"
-           << "  --headless, -h      Run in headless mode (no window UI, output via terminal logs)\n"
-           << "  --camera, -c <arg>  Camera index (e.g., 0, 1) or GStreamer pipeline string\n"
+           << "  --headless, -h      Run in headless mode (no window UI, "
+              "output via terminal logs)\n"
+           << "  --camera, -c <arg>  Camera index (e.g., 0, 1) or GStreamer "
+              "pipeline string\n"
            << "  --model, -m <path>  Path to model (.onnx or .caffemodel)\n"
-           << "  --config, -cfg <path> Path to configuration (.prototxt for Caffe)\n"
+           << "  --config, -cfg <path> Path to configuration (.prototxt for "
+              "Caffe)\n"
            << "  --help              Show this help message\n";
       return 0;
     }
@@ -248,7 +252,8 @@ int main(int argc, char **argv) {
 
   // Open Video Capture
   VideoCapture cap;
-  bool isDigit = !cameraInput.empty() && all_of(cameraInput.begin(), cameraInput.end(), ::isdigit);
+  bool isDigit = !cameraInput.empty() &&
+                 all_of(cameraInput.begin(), cameraInput.end(), ::isdigit);
   if (isDigit) {
     int camIdx = stoi(cameraInput);
     cout << "Opening camera index: " << camIdx << endl;
@@ -258,7 +263,8 @@ int main(int argc, char **argv) {
       cap.open(1);
     }
   } else {
-    cout << "Opening camera with string source / GStreamer pipeline:\n  " << cameraInput << endl;
+    cout << "Opening camera with string source / GStreamer pipeline:\n  "
+         << cameraInput << endl;
     cap.open(cameraInput, CAP_ANY);
   }
 
@@ -280,46 +286,43 @@ int main(int argc, char **argv) {
   } else {
     // Try to find the YOLOv8 model in workspace candidate locations
     vector<string> yoloCandidates = {
-      "output/yolov8n_vehicle.onnx",
-      "../output/yolov8n_vehicle.onnx",
-      "../../output/yolov8n_vehicle.onnx",
-      "runs/detect/train/weights/best.onnx",
-      "../runs/detect/train/weights/best.onnx",
-      "../../runs/detect/train/weights/best.onnx",
-      "yolov8n_vehicle.onnx"
-    };
+        "output/yolov8n_vehicle.onnx",
+        "../output/yolov8n_vehicle.onnx",
+        "../../output/yolov8n_vehicle.onnx",
+        "runs/detect/train/weights/best.onnx",
+        "../runs/detect/train/weights/best.onnx",
+        "../../runs/detect/train/weights/best.onnx",
+        "yolov8n_vehicle.onnx"};
     modelPath = findModelFile("output/yolov8n_vehicle.onnx", yoloCandidates);
 
     if (!modelPath.empty()) {
       cout << "Found YOLOv8 ONNX model: " << modelPath << endl;
     } else {
       vector<string> ssdCandidates = {
-        "output/vehicle_detector.onnx",
-        "../output/vehicle_detector.onnx",
-        "../../output/vehicle_detector.onnx",
-        "vehicle_detector.onnx"
-      };
+          "output/vehicle_detector.onnx", "../output/vehicle_detector.onnx",
+          "../../output/vehicle_detector.onnx", "vehicle_detector.onnx"};
       modelPath = findModelFile("output/vehicle_detector.onnx", ssdCandidates);
       if (!modelPath.empty()) {
         cout << "Found SSDLite320 ONNX model: " << modelPath << endl;
       } else {
         vector<string> caffeCandidates = {
-          "MobileNetSSD_deploy.caffemodel",
-          "../MobileNetSSD_deploy.caffemodel",
-          "../../MobileNetSSD_deploy.caffemodel"
-        };
-        vector<string> protoCandidates = {
-          "MobileNetSSD_deploy.prototxt",
-          "../MobileNetSSD_deploy.prototxt",
-          "../../MobileNetSSD_deploy.prototxt"
-        };
-        modelPath = findModelFile("MobileNetSSD_deploy.caffemodel", caffeCandidates);
-        configPath = findModelFile("MobileNetSSD_deploy.prototxt", protoCandidates);
+            "MobileNetSSD_deploy.caffemodel",
+            "../MobileNetSSD_deploy.caffemodel",
+            "../../MobileNetSSD_deploy.caffemodel"};
+        vector<string> protoCandidates = {"MobileNetSSD_deploy.prototxt",
+                                          "../MobileNetSSD_deploy.prototxt",
+                                          "../../MobileNetSSD_deploy.prototxt"};
+        modelPath =
+            findModelFile("MobileNetSSD_deploy.caffemodel", caffeCandidates);
+        configPath =
+            findModelFile("MobileNetSSD_deploy.prototxt", protoCandidates);
         if (!modelPath.empty() && !configPath.empty()) {
-          cout << "Falling back to Caffe MobileNetSSD:\n  Model: " << modelPath 
+          cout << "Falling back to Caffe MobileNetSSD:\n  Model: " << modelPath
                << "\n  Config: " << configPath << endl;
         } else {
-          cerr << "Error: Could not locate any model files. Placed them in output/ or the executable directory." << endl;
+          cerr << "Error: Could not locate any model files. Placed them in "
+                  "output/ or the executable directory."
+               << endl;
           return -1;
         }
       }
@@ -350,7 +353,9 @@ int main(int argc, char **argv) {
     resizeWindow("Optimized Collision Warning", 1280, 720);
     resizeWindow("Performance Metrics", 640, 400);
   } else {
-    cout << "Running in HEADLESS mode. Logs will output to terminal. Press Ctrl+C to terminate." << endl;
+    cout << "Running in HEADLESS mode. Logs will output to terminal. Press "
+            "Ctrl+C to terminate."
+         << endl;
   }
 
   while (true) {
@@ -391,8 +396,9 @@ int main(int argc, char **argv) {
             to_string(static_cast<int>(detection.distanceCm)) + "cm " +
             to_string(static_cast<int>(detection.confidence * 100.0F)) + "%" +
             directionSymbol;
-        putTextBg(frame, label, Point(detection.box.x, max(20, detection.box.y)),
-                  0.45, textColor, boxColor, 1);
+        putTextBg(frame, label,
+                  Point(detection.box.x, max(20, detection.box.y)), 0.45,
+                  textColor, boxColor, 1);
       }
 
       if (detection.distanceCm < dangerDistanceCm) {
@@ -409,15 +415,16 @@ int main(int argc, char **argv) {
         const double scale = 0.7;
         const int thickness = 2;
         int baseline = 0;
-        const Size sz =
-            getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, &baseline);
+        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
+                                    thickness, &baseline);
         const Point pos(frame.cols / 2 - sz.width / 2, 45);
         putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
                   Scalar(0, 0, 255), thickness);
       } else {
         const auto now = high_resolution_clock::now();
         const bool showBlink =
-            (duration_cast<milliseconds>(now.time_since_epoch()).count() / 500) %
+            (duration_cast<milliseconds>(now.time_since_epoch()).count() /
+             500) %
                 2 ==
             0;
         if (showBlink) {
@@ -448,19 +455,20 @@ int main(int argc, char **argv) {
       inferenceFpsHistory.push_back(inferenceFPS);
 
       if (headless) {
-        cout << "[Telemetry] Disp FPS: " << fixed << setprecision(1) << displayFPS 
-             << " | Infer FPS: " << inferenceFPS 
+        cout << "[Telemetry] Disp FPS: " << fixed << setprecision(1)
+             << displayFPS << " | Infer FPS: " << inferenceFPS
              << " | Speed: " << currentSpeedKmh << " km/h"
              << " | Safe Gap: " << (dangerDistanceCm / 100.0) << "m"
-             << " | Detections: " << detections.size()
-             << " | Warning: " << (anyApproachingDanger ? "AWAS! MENDAHULUI" : "AMAN") << endl;
+             << " | Detections: " << detections.size() << " | Warning: "
+             << (anyApproachingDanger ? "AWAS! MENDAHULUI" : "AMAN") << endl;
       }
     }
 
     if (!headless) {
       drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory, false);
 
-      putTextBg(frame, "Display FPS: " + to_string(static_cast<int>(displayFPS)),
+      putTextBg(frame,
+                "Display FPS: " + to_string(static_cast<int>(displayFPS)),
                 Point(10, frame.rows - 38), 0.6, Scalar(0, 255, 0),
                 Scalar(0, 0, 0), 1);
       putTextBg(frame,
@@ -468,15 +476,18 @@ int main(int argc, char **argv) {
                 Point(10, frame.rows - 12), 0.6, Scalar(255, 80, 30),
                 Scalar(0, 0, 0), 1);
 
-      string speedText = "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h (W/S)";
+      string speedText =
+          "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) +
+          " km/h (W/S)";
       char safeDistBuf[64];
-      snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm", dangerDistanceCm / 100.0);
+      snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm",
+               dangerDistanceCm / 100.0);
       string safeText(safeDistBuf);
 
-      putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6, Scalar(255, 255, 255),
-                Scalar(120, 40, 40), 1);
-      putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6, Scalar(255, 255, 255),
-                Scalar(120, 40, 40), 1);
+      putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6,
+                Scalar(255, 255, 255), Scalar(120, 40, 40), 1);
+      putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6,
+                Scalar(255, 255, 255), Scalar(120, 40, 40), 1);
 
       imshow("Optimized Collision Warning", frame);
       imshow("Performance Metrics", graphImg);
@@ -490,9 +501,9 @@ int main(int argc, char **argv) {
         currentSpeedKmh = max(currentSpeedKmh - 5.0, 0.0);
       }
     } else {
-      // In headless mode, sleep tiny bit to reduce spin, or just waitKey(1) equivalent
-      // to let OpenCV events update without block.
-      // Since no window is open, waitKey(1) acts as a brief sleep.
+      // In headless mode, sleep tiny bit to reduce spin, or just waitKey(1)
+      // equivalent to let OpenCV events update without block. Since no window
+      // is open, waitKey(1) acts as a brief sleep.
       waitKey(1);
     }
   }
@@ -508,11 +519,10 @@ int main(int argc, char **argv) {
 
     // Save image with fallback paths
     vector<string> savePaths = {
-      "output/performance_summary_optimized.png",
-      "../output/performance_summary_optimized.png",
-      "../../output/performance_summary_optimized.png",
-      "performance_summary_optimized.png"
-    };
+        "output/performance_summary_optimized.png",
+        "../output/performance_summary_optimized.png",
+        "../../output/performance_summary_optimized.png",
+        "performance_summary_optimized.png"};
 
     bool saved = false;
     for (const auto &path : savePaths) {
@@ -523,14 +533,17 @@ int main(int argc, char **argv) {
       }
     }
     if (!saved) {
-      cerr << "\nError: Could not save performance summary graph to any candidate paths." << endl;
+      cerr << "\nError: Could not save performance summary graph to any "
+              "candidate paths."
+           << endl;
     }
 
     if (!headless) {
       namedWindow("Performance Summary", WINDOW_NORMAL);
       resizeWindow("Performance Summary", 640, 400);
       imshow("Performance Summary", summaryImg);
-      cout << "Performance Summary window opened. Press any key to exit..." << endl;
+      cout << "Performance Summary window opened. Press any key to exit..."
+           << endl;
       waitKey(0);
     }
   }

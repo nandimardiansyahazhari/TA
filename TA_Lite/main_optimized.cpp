@@ -222,7 +222,7 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
 } // namespace
 
 int main() {
-  VideoCapture cap(0);
+  VideoCapture cap(2);
   if (!cap.isOpened()) {
     cap.open(1);
   }
@@ -381,15 +381,18 @@ int main() {
               Scalar(0, 0, 0), 1);
 
     // Draw simulated speed and dynamic warning threshold HUD
-    string speedText = "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h (W/S)";
+    string speedText =
+        "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) +
+        " km/h (W/S)";
     char safeDistBuf[64];
-    snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm", dangerDistanceCm / 100.0);
+    snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm",
+             dangerDistanceCm / 100.0);
     string safeText(safeDistBuf);
 
-    putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6, Scalar(255, 255, 255),
-              Scalar(120, 40, 40), 1);
-    putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6, Scalar(255, 255, 255),
-              Scalar(120, 40, 40), 1);
+    putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6,
+              Scalar(255, 255, 255), Scalar(120, 40, 40), 1);
+    putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6,
+              Scalar(255, 255, 255), Scalar(120, 40, 40), 1);
 
     imshow("Optimized Collision Warning", frame);
     imshow("Performance Metrics", graphImg);
