@@ -1,0 +1,17 @@
+[Unit]
+Description=Collision Detection Interactive Touch Menu
+After=systemd-user-sessions.service plymouth-quit-active.service getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ansyah/TA/TA_Lite/raspberry_pi5/build
+ExecStart=/usr/bin/xinit /home/ansyah/TA/TA_Lite/raspberry_pi5/build/start_app.sh -- :0
+ExecStopPost=/bin/systemctl start getty@tty1.service
+TimeoutStopSec=2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

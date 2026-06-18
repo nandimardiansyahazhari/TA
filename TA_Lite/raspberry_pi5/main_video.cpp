@@ -17,9 +17,47 @@ using namespace ta_lite;
 
 namespace {
 
-constexpr int kGraphWidth = 640;
-constexpr int kGraphHeight = 400;
+constexpr int kGraphWidth = 720;
+constexpr int kGraphHeight = 500;
 constexpr size_t kMaxHistory = 200;
+
+struct VideoControl { double *speed; bool *exitReq; };
+
+void onMouse(int event, int x, int y, int flags, void* userdata) {
+  if (event == EVENT_LBUTTONDOWN) {
+    VideoControl *ctrl = static_cast<VideoControl*>(userdata);
+    // Speed - Button: x in [20, 180], y in [10, 60]
+    if (x >= 20 && x <= 180 && y >= 10 && y <= 60) {
+      *(ctrl->speed) = max(*(ctrl->speed) - 5.0, 0.0);
+    }
+    // Speed + Button: x in [540, 700], y in [10, 60]
+    else if (x >= 540 && x <= 700 && y >= 10 && y <= 60) {
+      *(ctrl->speed) = min(*(ctrl->speed) + 5.0, 120.0);
+    }
+  }
+}
+
+void onGraphMouse(int event, int x, int y, int flags, void* userdata) {
+  if (event == EVENT_LBUTTONDOWN) {
+    bool *exitReq = static_cast<bool*>(userdata);
+    // X button circle at (kGraphWidth-40, 40) = (680, 40), radius 20 -> click area
+    if (x >= 655 && x <= 705 && y >= 20 && y <= 60) {
+      *exitReq = true;
+    }
+  }
+}
+
+void drawTouchButtons(Mat &img) {
+  // Speed Down Button
+  rectangle(img, Rect(20, 10, 160, 50), Scalar(50, 50, 200), -1); // Dark Red fill
+  rectangle(img, Rect(20, 10, 160, 50), Scalar(255, 255, 255), 2); // White border
+  putText(img, "SPEED -", Point(55, 42), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+  // Speed Up Button
+  rectangle(img, Rect(img.cols - 180, 10, 160, 50), Scalar(50, 180, 50), -1); // Dark Green fill
+  rectangle(img, Rect(img.cols - 180, 10, 160, 50), Scalar(255, 255, 255), 2); // White border
+  putText(img, "SPEED +", Point(img.cols - 145, 42), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+}
 
 void putTextBg(Mat &img, const string &text, Point org, double fontScale,
                Scalar textColor, Scalar bgColor, int thickness) {
@@ -292,13 +330,19 @@ int main(int argc, char **argv) {
   int frameCounter = 0;
   auto lastDisplayTick = high_resolution_clock::now();
   double currentSpeedKmh = 60.0;
+  bool exitRequested = false;
+  VideoControl videoCtrl = { &currentSpeedKmh, &exitRequested };
 
   if (!headless) {
     cout << "Press ESC to exit. Press W to speed up, S to slow down." << endl;
     namedWindow("Optimized Collision Warning (Video)", WINDOW_NORMAL);
     namedWindow("Performance Metrics", WINDOW_NORMAL);
-    resizeWindow("Optimized Collision Warning (Video)", 1280, 720);
-    resizeWindow("Performance Metrics", 640, 400);
+    resizeWindow("Optimized Collision Warning (Video)", 720, 405);
+    resizeWindow("Performance Metrics", 720, 500);
+    moveWindow("Optimized Collision Warning (Video)", 0, 0);
+    moveWindow("Performance Metrics", 0, 440);
+    setMouseCallback("Optimized Collision Warning (Video)", onMouse, &videoCtrl);
+    setMouseCallback("Performance Metrics", onGraphMouse, &exitRequested);
   } else {
     cout << "Running in HEADLESS mode. Telemetry will output to terminal." << endl;
   }
@@ -429,11 +473,14 @@ int main(int argc, char **argv) {
       putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6, Scalar(255, 255, 255),
                 Scalar(120, 40, 40), 1);
 
-      imshow("Optimized Collision Warning (Video)", frame);
+      Mat displayFrame;
+      resize(frame, displayFrame, Size(720, 405));
+      drawTouchButtons(displayFrame);
+      imshow("Optimized Collision Warning (Video)", displayFrame);
       imshow("Performance Metrics", graphImg);
 
       int key = waitKey(1);
-      if (key == 27) {
+      if (key == 27 || exitRequested || getWindowProperty("Optimized Collision Warning (Video)", WND_PROP_VISIBLE) < 1 || getWindowProperty("Performance Metrics", WND_PROP_VISIBLE) < 1) {
         break;
       } else if (key == 'w' || key == 'W') {
         currentSpeedKmh = min(currentSpeedKmh + 5.0, 120.0);
@@ -476,7 +523,8 @@ int main(int argc, char **argv) {
 
     if (!headless) {
       namedWindow("Performance Summary", WINDOW_NORMAL);
-      resizeWindow("Performance Summary", 640, 400);
+      resizeWindow("Performance Summary", 480, 300);
+      moveWindow("Performance Summary", 0, 0);
       imshow("Performance Summary", summaryImg);
       cout << "Performance Summary window opened. Press any key to exit..." << endl;
       waitKey(0);

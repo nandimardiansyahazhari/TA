@@ -5,6 +5,7 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "detection_config.hpp"
@@ -18,9 +19,175 @@ using ta_lite::ObjectDetector;
 
 namespace {
 
-constexpr int kGraphWidth = 640;
-constexpr int kGraphHeight = 400;
+constexpr int kGraphWidth = 720;
+constexpr int kGraphHeight = 500;
 constexpr int kMaxHistory = 200;
+
+int readRotationConfig() {
+  std::ifstream f("rotation.txt");
+  if (!f.good()) {
+    f.open("../rotation.txt");
+    if (!f.good()) {
+      f.open("../../rotation.txt");
+    }
+  }
+  int rot = 0;
+  if (f.is_open()) {
+    f >> rot;
+  }
+  return rot;
+}
+
+void writeRotationConfig(int rot) {
+  std::ofstream f("rotation.txt", std::ios::trunc);
+  if (f.is_open()) {
+    f << rot;
+    return;
+  }
+  f.open("../rotation.txt", std::ios::trunc);
+  if (f.is_open()) {
+    f << rot;
+    return;
+  }
+  f.open("../../rotation.txt", std::ios::trunc);
+  if (f.is_open()) {
+    f << rot;
+    return;
+  }
+}
+
+void resizeKeepAspectRatio(const Mat& src, Mat& dst, Size dstSize) {
+  double srcRatio = (double)src.cols / src.rows;
+  double dstRatio = (double)dstSize.width / dstSize.height;
+  int newW, newH;
+  if (srcRatio > dstRatio) {
+    newW = dstSize.width;
+    newH = cvRound(newW / srcRatio);
+  } else {
+    newH = dstSize.height;
+    newW = cvRound(newH * srcRatio);
+  }
+  Mat resized;
+  resize(src, resized, Size(newW, newH));
+  
+  dst = Mat::zeros(dstSize, src.type());
+  int x = (dstSize.width - newW) / 2;
+  int y = (dstSize.height - newH) / 2;
+  resized.copyTo(dst(Rect(x, y, newW, newH)));
+}
+
+struct TouchControl {
+  double *speed;
+  bool *exitRequested;
+  bool fullscreen;
+  int rotateMode;
+};
+
+void onMouse(int event, int x, int y, int flags, void* userdata) {
+  if (event == EVENT_LBUTTONDOWN) {
+    TouchControl *ctrl = static_cast<TouchControl *>(userdata);
+    int rx = x;
+    int ry = y;
+    if (ctrl->rotateMode == 90) {
+      rx = y;
+      ry = 720 - 1 - x;
+    } else if (ctrl->rotateMode == 270) {
+      rx = 1280 - 1 - y;
+      ry = x;
+    }
+
+    // Check Rotate Button (always present at top right corner)
+    bool rotateClicked = false;
+    if (ctrl->rotateMode == 90 || ctrl->rotateMode == 270) {
+      if (rx >= 1140 && rx <= 1240 && ry >= 40 && ry <= 100) {
+        rotateClicked = true;
+      }
+    } else {
+      if (x >= 580 && x <= 680 && y >= 40 && y <= 100) {
+        rotateClicked = true;
+      }
+    }
+
+    if (rotateClicked) {
+      if (ctrl->rotateMode == 0) ctrl->rotateMode = 90;
+      else if (ctrl->rotateMode == 90) ctrl->rotateMode = 270;
+      else ctrl->rotateMode = 0;
+      writeRotationConfig(ctrl->rotateMode);
+      return;
+    }
+
+    if (ctrl->fullscreen) {
+      if (ctrl->rotateMode == 90 || ctrl->rotateMode == 270) {
+        // Landscape Fullscreen coordinates:
+        // Speed Down Button: rx in [50, 250], ry in [600, 670]
+        if (rx >= 50 && rx <= 250 && ry >= 600 && ry <= 670) {
+          *(ctrl->speed) = max(*(ctrl->speed) - 5.0, 0.0);
+        }
+        // Speed Up Button: rx in [1030, 1230], ry in [600, 670]
+        else if (rx >= 1030 && rx <= 1230 && ry >= 600 && ry <= 670) {
+          *(ctrl->speed) = min(*(ctrl->speed) + 5.0, 120.0);
+        }
+        // Kembali Button: rx in [50, 250], ry in [50, 120]
+        else if (rx >= 50 && rx <= 250 && ry >= 50 && ry <= 120) {
+          *(ctrl->exitRequested) = true;
+        }
+      } else {
+        // Fullscreen coordinates (Portrait):
+        // Speed Down Button: x in [60, 320], y in [500, 580]
+        if (x >= 60 && x <= 320 && y >= 500 && y <= 580) {
+          *(ctrl->speed) = max(*(ctrl->speed) - 5.0, 0.0);
+        }
+        // Speed Up Button: x in [400, 660], y in [500, 580]
+        else if (x >= 400 && x <= 660 && y >= 500 && y <= 580) {
+          *(ctrl->speed) = min(*(ctrl->speed) + 5.0, 120.0);
+        }
+        // Back Button: x in [160, 560], y in [1100, 1200]
+        else if (x >= 160 && x <= 560 && y >= 1100 && y <= 1200) {
+          *(ctrl->exitRequested) = true;
+        }
+      }
+    } else {
+      // With Graph Mode coordinates:
+      if (ctrl->rotateMode == 90 || ctrl->rotateMode == 270) {
+        // Landscape with Graph:
+        // Speed Down: rx in [800, 1000], ry in [600, 670]
+        if (rx >= 800 && rx <= 1000 && ry >= 600 && ry <= 670) {
+          *(ctrl->speed) = max(*(ctrl->speed) - 5.0, 0.0);
+        }
+        // Speed Up: rx in [1030, 1230], ry in [600, 670]
+        else if (rx >= 1030 && rx <= 1230 && ry >= 600 && ry <= 670) {
+          *(ctrl->speed) = min(*(ctrl->speed) + 5.0, 120.0);
+        }
+        // Back Button (KEMBALI): rx in [800, 1000], ry in [60, 130]
+        else if (rx >= 800 && rx <= 1000 && ry >= 60 && ry <= 130) {
+          *(ctrl->exitRequested) = true;
+        }
+        // Graph X (Stop) button: graphImg Rect(800,150,450,400), X at graph(680,40) scaled -> canvas(1225,182)
+        else if (rx >= 1200 && rx <= 1250 && ry >= 162 && ry <= 202) {
+          *(ctrl->exitRequested) = true;
+        }
+      } else {
+        // Portrait with Graph:
+        // Speed Down: x in [60, 320], y in [440, 510]
+        if (x >= 60 && x <= 320 && y >= 440 && y <= 510) {
+          *(ctrl->speed) = max(*(ctrl->speed) - 5.0, 0.0);
+        }
+        // Speed Up: x in [400, 660], y in [440, 510]
+        else if (x >= 400 && x <= 660 && y >= 440 && y <= 510) {
+          *(ctrl->speed) = min(*(ctrl->speed) + 5.0, 120.0);
+        }
+        // Back Button (KEMBALI KE MENU): x in [160, 560], y in [530, 600]
+        else if (x >= 160 && x <= 560 && y >= 530 && y <= 600) {
+          *(ctrl->exitRequested) = true;
+        }
+        // Graph X (Stop) button: graphImg Rect(0,780,720,500), X at graph(680,40) -> canvas(680,820)
+        else if (x >= 655 && x <= 705 && y >= 800 && y <= 840) {
+          *(ctrl->exitRequested) = true;
+        }
+      }
+    }
+  }
+}
 
 void putTextBg(Mat &img, const string &text, const Point &pos, double scale,
                const Scalar &color, const Scalar &bg, int thickness = 2) {
@@ -199,6 +366,15 @@ void drawGraph(Mat &img, const vector<double> &displayHistory,
            curInfer, avgInfer, maxInfer, minInfer);
   putText(img, statBuf, Point(leftMargin + 25, 67), FONT_HERSHEY_SIMPLEX, 0.38,
           Scalar(200, 200, 200), 1, LINE_AA);
+
+  if (!isFinalSummary) {
+    // Exit/Back button on graph window: round button at center (kGraphWidth - 40, 40) which is (680, 40), radius 20
+    circle(img, Point(kGraphWidth - 40, 40), 20, Scalar(50, 50, 200), -1); // Dark Red fill
+    circle(img, Point(kGraphWidth - 40, 40), 20, Scalar(255, 255, 255), 2); // White outline
+    // Draw an X symbol inside
+    line(img, Point(kGraphWidth - 47, 33), Point(kGraphWidth - 33, 47), Scalar(255, 255, 255), 2, LINE_AA);
+    line(img, Point(kGraphWidth - 33, 33), Point(kGraphWidth - 47, 47), Scalar(255, 255, 255), 2, LINE_AA);
+  }
 }
 
 // Helper to look for file in candidate locations
@@ -221,14 +397,20 @@ string findModelFile(const string &filename, const vector<string> &candidates) {
 int main(int argc, char **argv) {
   string cameraInput = "0";
   bool headless = false;
+  bool fullscreen = false;
   string userModelPath = "";
   string userConfigPath = "";
+  int rotateMode = readRotationConfig();
 
   // CLI Arguments Parsing
   for (int i = 1; i < argc; ++i) {
     string arg = argv[i];
     if (arg == "--headless" || arg == "-h") {
       headless = true;
+    } else if (arg == "--fullscreen" || arg == "-f") {
+      fullscreen = true;
+    } else if ((arg == "--rotate" || arg == "-r") && i + 1 < argc) {
+      rotateMode = stoi(argv[++i]);
     } else if ((arg == "--camera" || arg == "-c") && i + 1 < argc) {
       cameraInput = argv[++i];
     } else if ((arg == "--model" || arg == "-m") && i + 1 < argc) {
@@ -242,6 +424,7 @@ int main(int argc, char **argv) {
               "output via terminal logs)\n"
            << "  --camera, -c <arg>  Camera index (e.g., 0, 1) or GStreamer "
               "pipeline string\n"
+           << "  --rotate, -r <deg>  Rotate screen output (90 or 270)\n"
            << "  --model, -m <path>  Path to model (.onnx or .caffemodel)\n"
            << "  --config, -cfg <path> Path to configuration (.prototxt for "
               "Caffe)\n"
@@ -259,8 +442,15 @@ int main(int argc, char **argv) {
     cout << "Opening camera index: " << camIdx << endl;
     cap.open(camIdx);
     if (!cap.isOpened() && camIdx == 0) {
-      cout << "Camera 0 failed. Trying camera 1..." << endl;
-      cap.open(1);
+      vector<int> fallbacks = {1, 2, 3, 4, 6, 8, 10};
+      for (int idx : fallbacks) {
+        cout << "Camera 0 failed. Trying camera index " << idx << "..." << endl;
+        cap.open(idx);
+        if (cap.isOpened()) {
+          cout << "Successfully opened camera index: " << idx << endl;
+          break;
+        }
+      }
     }
   } else {
     cout << "Opening camera with string source / GStreamer pipeline:\n  "
@@ -268,9 +458,52 @@ int main(int argc, char **argv) {
     cap.open(cameraInput, CAP_ANY);
   }
 
+
+  // Retry loop: Kamera butuh waktu saat cold boot dari power station
   if (!cap.isOpened()) {
-    cerr << "Error: Could not open camera source." << endl;
-    return -1;
+    cerr << "Camera not ready yet. Retrying up to 30 seconds..." << endl;
+    if (!headless) {
+      namedWindow("Optimized Collision Warning", WINDOW_NORMAL);
+      resizeWindow("Optimized Collision Warning", 720, 1280);
+      moveWindow("Optimized Collision Warning", 0, 0);
+    }
+    int retries = 0;
+    const int maxRetries = 30;
+    while (!cap.isOpened() && retries < maxRetries) {
+      retries++;
+      cerr << "  Retry " << retries << "/" << maxRetries << "..." << endl;
+      if (!headless) {
+        // Show waiting screen
+        Mat waitImg = Mat::zeros(1280, 720, CV_8UC3);
+        string msg1 = "Menginisialisasi Kamera...";
+        string msg2 = "Percobaan: " + to_string(retries) + "/" + to_string(maxRetries);
+        putText(waitImg, msg1, Point(80, 600), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 255, 255), 2, LINE_AA);
+        putText(waitImg, msg2, Point(80, 660), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 2, LINE_AA);
+        imshow("Optimized Collision Warning", waitImg);
+        waitKey(1000); // tunggu 1 detik sambil update layar
+      } else {
+        this_thread::sleep_for(chrono::seconds(1));
+      }
+      // Coba buka lagi semua index fallback
+      if (isDigit) {
+        int camIdx = stoi(cameraInput);
+        cap.open(camIdx);
+        if (!cap.isOpened()) {
+          for (int idx : {1, 2, 3, 4, 6, 8, 10}) {
+            cap.open(idx);
+            if (cap.isOpened()) break;
+          }
+        }
+      } else {
+        cap.open(cameraInput, CAP_ANY);
+      }
+    }
+    if (!cap.isOpened()) {
+      cerr << "Error: Could not open camera after " << maxRetries << " retries." << endl;
+      if (!headless) destroyAllWindows();
+      return -1;
+    }
+    cerr << "Camera opened successfully after " << retries << " retries." << endl;
   }
 
   cap.set(CAP_PROP_FRAME_WIDTH, ta_lite::kResWidth);
@@ -286,14 +519,14 @@ int main(int argc, char **argv) {
   } else {
     // Try to find the YOLOv8 model in workspace candidate locations
     vector<string> yoloCandidates = {
-        "output/yolov8n_vehicle.onnx",
-        "../output/yolov8n_vehicle.onnx",
-        "../../output/yolov8n_vehicle.onnx",
         "runs/detect/train/weights/best.onnx",
         "../runs/detect/train/weights/best.onnx",
         "../../runs/detect/train/weights/best.onnx",
+        "output/yolov8n_vehicle.onnx",
+        "../output/yolov8n_vehicle.onnx",
+        "../../output/yolov8n_vehicle.onnx",
         "yolov8n_vehicle.onnx"};
-    modelPath = findModelFile("output/yolov8n_vehicle.onnx", yoloCandidates);
+    modelPath = findModelFile("runs/detect/train/weights/best.onnx", yoloCandidates);
 
     if (!modelPath.empty()) {
       cout << "Found YOLOv8 ONNX model: " << modelPath << endl;
@@ -346,12 +579,15 @@ int main(int argc, char **argv) {
   auto lastDisplayTick = high_resolution_clock::now();
   double currentSpeedKmh = 60.0;
 
+  bool exitRequested = false;
+  TouchControl control = { &currentSpeedKmh, &exitRequested, fullscreen, rotateMode };
+
   if (!headless) {
     cout << "Press ESC to exit. Press W to speed up, S to slow down." << endl;
     namedWindow("Optimized Collision Warning", WINDOW_NORMAL);
-    namedWindow("Performance Metrics", WINDOW_NORMAL);
-    resizeWindow("Optimized Collision Warning", 1280, 720);
-    resizeWindow("Performance Metrics", 640, 400);
+    resizeWindow("Optimized Collision Warning", 720, 1280);
+    moveWindow("Optimized Collision Warning", 0, 0);
+    setMouseCallback("Optimized Collision Warning", onMouse, &control);
   } else {
     cout << "Running in HEADLESS mode. Logs will output to terminal. Press "
             "Ctrl+C to terminate."
@@ -409,37 +645,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (!headless) {
-      if (anyApproachingDanger) {
-        const string text = "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI";
-        const double scale = 0.7;
-        const int thickness = 2;
-        int baseline = 0;
-        const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
-                                    thickness, &baseline);
-        const Point pos(frame.cols / 2 - sz.width / 2, 45);
-        putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
-                  Scalar(0, 0, 255), thickness);
-      } else {
-        const auto now = high_resolution_clock::now();
-        const bool showBlink =
-            (duration_cast<milliseconds>(now.time_since_epoch()).count() /
-             500) %
-                2 ==
-            0;
-        if (showBlink) {
-          const string text = "BISA MENYUSUL";
-          const double scale = 0.7;
-          const int thickness = 2;
-          int baseline = 0;
-          const Size sz = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale,
-                                      thickness, &baseline);
-          const Point pos(frame.cols / 2 - sz.width / 2, 45);
-          putTextBg(frame, text, pos, scale, Scalar(255, 255, 255),
-                    Scalar(0, 200, 0), thickness);
-        }
-      }
-    }
+    // Warning banner is drawn directly on the canvas below (not on raw frame)
 
     frameCounter++;
     const auto now = high_resolution_clock::now();
@@ -465,35 +671,247 @@ int main(int argc, char **argv) {
     }
 
     if (!headless) {
-      drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory, false);
+      // Keep control rotation in sync
+      rotateMode = control.rotateMode;
 
-      putTextBg(frame,
-                "Display FPS: " + to_string(static_cast<int>(displayFPS)),
-                Point(10, frame.rows - 38), 0.6, Scalar(0, 255, 0),
-                Scalar(0, 0, 0), 1);
-      putTextBg(frame,
-                "Inference FPS: " + to_string(static_cast<int>(inferenceFPS)),
-                Point(10, frame.rows - 12), 0.6, Scalar(255, 80, 30),
-                Scalar(0, 0, 0), 1);
+      Mat canvas;
+      if (rotateMode == 90 || rotateMode == 270) {
+        canvas = Mat::zeros(720, 1280, CV_8UC3);
+      } else {
+        canvas = Mat::zeros(1280, 720, CV_8UC3);
+      }
 
-      string speedText =
-          "Speed: " + to_string(static_cast<int>(currentSpeedKmh)) +
-          " km/h (W/S)";
-      char safeDistBuf[64];
-      snprintf(safeDistBuf, sizeof(safeDistBuf), "Safe Gap: %.1fm",
-               dangerDistanceCm / 100.0);
-      string safeText(safeDistBuf);
+      if (fullscreen) {
+        // Fullscreen Mode (No graph)
+        if (rotateMode == 90 || rotateMode == 270) {
+          // Landscape: resize video keeping aspect ratio to fill 1280x720 canvas
+          Mat videoArea;
+          resizeKeepAspectRatio(frame, videoArea, Size(1280, 720));
+          videoArea.copyTo(canvas);
 
-      putTextBg(frame, speedText, Point(frame.cols - 240, frame.rows - 38), 0.6,
-                Scalar(255, 255, 255), Scalar(120, 40, 40), 1);
-      putTextBg(frame, safeText, Point(frame.cols - 240, frame.rows - 12), 0.6,
-                Scalar(255, 255, 255), Scalar(120, 40, 40), 1);
+          string speedTxt = "SPEED: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h";
+          char gapBuf[64];
+          snprintf(gapBuf, sizeof(gapBuf), "SAFE GAP: %.1fm", dangerDistanceCm / 100.0);
+          string gapTxt(gapBuf);
 
-      imshow("Optimized Collision Warning", frame);
-      imshow("Performance Metrics", graphImg);
+          putTextBg(canvas, speedTxt, Point(300, 640), 0.7, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+          putTextBg(canvas, gapTxt, Point(600, 640), 0.7, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+
+          // SPEED - Button (Red)
+          rectangle(canvas, Rect(50, 600, 200, 70), Scalar(50, 50, 200), -1);
+          rectangle(canvas, Rect(50, 600, 200, 70), Scalar(255, 255, 255), 2);
+          putText(canvas, "SPEED -", Point(95, 645), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // SPEED + Button (Green)
+          rectangle(canvas, Rect(1030, 600, 200, 70), Scalar(50, 180, 50), -1);
+          rectangle(canvas, Rect(1030, 600, 200, 70), Scalar(255, 255, 255), 2);
+          putText(canvas, "SPEED +", Point(1075, 645), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // Warning Banner
+          string warnText = anyApproachingDanger ? "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI" : "BISA MENYUSUL";
+          Scalar warnBg = anyApproachingDanger ? Scalar(0, 0, 255) : Scalar(0, 180, 0);
+
+          int baseline = 0;
+          Size sz = getTextSize(warnText, FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+          Point pos(640 - sz.width / 2, 55);
+          putTextBg(canvas, warnText, pos, 0.7, Scalar(255, 255, 255), warnBg, 2);
+
+          // Telemetry info
+          string statsText = "Display FPS: " + to_string(static_cast<int>(displayFPS)) + 
+                             " | Infer FPS: " + to_string(static_cast<int>(inferenceFPS)) + 
+                             " | Detections: " + to_string(detections.size());
+          putText(canvas, statsText, Point(350, 110), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1, LINE_AA);
+
+          // KEMBALI Button (Gray)
+          rectangle(canvas, Rect(50, 50, 200, 70), Scalar(80, 80, 80), -1);
+          rectangle(canvas, Rect(50, 50, 200, 70), Scalar(255, 255, 255), 2);
+          putText(canvas, "KEMBALI", Point(100, 95), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // ROTATE Button (Gray)
+          rectangle(canvas, Rect(1140, 40, 100, 60), Scalar(100, 100, 100), -1);
+          rectangle(canvas, Rect(1140, 40, 100, 60), Scalar(255, 255, 255), 2);
+          putText(canvas, "ROT", Point(1165, 80), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+        } else {
+          // Portrait: resize video keeping aspect ratio to fit 720x405 rect
+          Mat videoArea;
+          resizeKeepAspectRatio(frame, videoArea, Size(720, 405));
+          videoArea.copyTo(canvas(Rect(0, 0, 720, 405)));
+
+          string speedTxt = "SPEED: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h";
+          char gapBuf[64];
+          snprintf(gapBuf, sizeof(gapBuf), "SAFE GAP: %.1fm", dangerDistanceCm / 100.0);
+          string gapTxt(gapBuf);
+
+          putTextBg(canvas, speedTxt, Point(60, 440), 0.7, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+          putTextBg(canvas, gapTxt, Point(400, 440), 0.7, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+
+          // SPEED - Button (Red)
+          rectangle(canvas, Rect(60, 500, 260, 80), Scalar(50, 50, 200), -1);
+          rectangle(canvas, Rect(60, 500, 260, 80), Scalar(255, 255, 255), 3);
+          putText(canvas, "SPEED -", Point(125, 550), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // SPEED + Button (Green)
+          rectangle(canvas, Rect(400, 500, 260, 80), Scalar(50, 180, 50), -1);
+          rectangle(canvas, Rect(400, 500, 260, 80), Scalar(255, 255, 255), 3);
+          putText(canvas, "SPEED +", Point(465, 550), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // Warning Banner
+          string warnText = anyApproachingDanger ? "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI" : "BISA MENYUSUL";
+          Scalar warnBg = anyApproachingDanger ? Scalar(0, 0, 255) : Scalar(0, 180, 0);
+
+          int baseline = 0;
+          Size sz = getTextSize(warnText, FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+          Point pos(360 - sz.width / 2, 650);
+          putTextBg(canvas, warnText, pos, 0.7, Scalar(255, 255, 255), warnBg, 2);
+
+          // Telemetry info
+          string statsText = "Display FPS: " + to_string(static_cast<int>(displayFPS)) + 
+                             " | Infer FPS: " + to_string(static_cast<int>(inferenceFPS)) + 
+                             " | Detections: " + to_string(detections.size());
+          putText(canvas, statsText, Point(60, 950), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1, LINE_AA);
+
+          // BACK Button (Gray)
+          rectangle(canvas, Rect(160, 1100, 400, 100), Scalar(80, 80, 80), -1);
+          rectangle(canvas, Rect(160, 1100, 400, 100), Scalar(255, 255, 255), 3);
+          putText(canvas, "KEMBALI KE MENU", Point(245, 1160), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // ROTATE Button (Gray)
+          rectangle(canvas, Rect(580, 40, 100, 60), Scalar(100, 100, 100), -1);
+          rectangle(canvas, Rect(580, 40, 100, 60), Scalar(255, 255, 255), 2);
+          putText(canvas, "ROT", Point(605, 80), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+        }
+      } else {
+        // With Graph Mode (Combined Single Window)
+        drawGraph(graphImg, displayFpsHistory, inferenceFpsHistory, false);
+
+        if (rotateMode == 90 || rotateMode == 270) {
+          // Landscape with Graph
+          // Left: resize video keeping aspect ratio to fit 720x540 rect
+          Mat videoArea;
+          resizeKeepAspectRatio(frame, videoArea, Size(720, 540));
+          videoArea.copyTo(canvas(Rect(50, 90, 720, 540)));
+
+          // Right: resize graphImg to fit 450x400
+          Mat resizedGraph;
+          resize(graphImg, resizedGraph, Size(450, 400));
+          resizedGraph.copyTo(canvas(Rect(800, 150, 450, 400)));
+
+          // Speed and Safe Gap text
+          string speedTxt = "SPEED: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h";
+          char gapBuf[64];
+          snprintf(gapBuf, sizeof(gapBuf), "SAFE GAP: %.1fm", dangerDistanceCm / 100.0);
+          string gapTxt(gapBuf);
+
+          putTextBg(canvas, speedTxt, Point(800, 575), 0.6, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+          putTextBg(canvas, gapTxt, Point(1030, 575), 0.6, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+
+          // SPEED - Button (Red)
+          rectangle(canvas, Rect(800, 600, 200, 70), Scalar(50, 50, 200), -1);
+          rectangle(canvas, Rect(800, 600, 200, 70), Scalar(255, 255, 255), 2);
+          putText(canvas, "SPEED -", Point(845, 645), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // SPEED + Button (Green)
+          rectangle(canvas, Rect(1030, 600, 200, 70), Scalar(50, 180, 50), -1);
+          rectangle(canvas, Rect(1030, 600, 200, 70), Scalar(255, 255, 255), 2);
+          putText(canvas, "SPEED +", Point(1075, 645), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // Warning Banner
+          string warnText = anyApproachingDanger ? "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI" : "BISA MENYUSUL";
+          Scalar warnBg = anyApproachingDanger ? Scalar(0, 0, 255) : Scalar(0, 180, 0);
+
+          int baseline = 0;
+          Size sz = getTextSize(warnText, FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+          Point pos(410 - sz.width / 2, 50);
+          putTextBg(canvas, warnText, pos, 0.7, Scalar(255, 255, 255), warnBg, 2);
+
+          // Telemetry info
+          string statsText = "Display FPS: " + to_string(static_cast<int>(displayFPS)) + 
+                             " | Infer FPS: " + to_string(static_cast<int>(inferenceFPS)) + 
+                             " | Detections: " + to_string(detections.size());
+          putText(canvas, statsText, Point(50, 665), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1, LINE_AA);
+
+          // BACK Button (Gray)
+          rectangle(canvas, Rect(800, 60, 200, 70), Scalar(80, 80, 80), -1);
+          rectangle(canvas, Rect(800, 60, 200, 70), Scalar(255, 255, 255), 2);
+          putText(canvas, "KEMBALI", Point(850, 105), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // ROTATE Button (Gray)
+          rectangle(canvas, Rect(1140, 40, 100, 60), Scalar(100, 100, 100), -1);
+          rectangle(canvas, Rect(1140, 40, 100, 60), Scalar(255, 255, 255), 2);
+          putText(canvas, "ROT", Point(1165, 80), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+        } else {
+          // Portrait with Graph
+          // Top: resize video keeping aspect ratio to fit 720x405 rect
+          Mat videoArea;
+          resizeKeepAspectRatio(frame, videoArea, Size(720, 405));
+          videoArea.copyTo(canvas(Rect(0, 0, 720, 405)));
+
+          // Bottom: copy graphImg directly to Rect(0, 780, 720, 500)
+          graphImg.copyTo(canvas(Rect(0, 780, 720, 500)));
+
+          // Speed and Safe Gap text
+          string speedTxt = "SPEED: " + to_string(static_cast<int>(currentSpeedKmh)) + " km/h";
+          char gapBuf[64];
+          snprintf(gapBuf, sizeof(gapBuf), "SAFE GAP: %.1fm", dangerDistanceCm / 100.0);
+          string gapTxt(gapBuf);
+
+          putTextBg(canvas, speedTxt, Point(60, 640), 0.7, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+          putTextBg(canvas, gapTxt, Point(400, 640), 0.7, Scalar(255, 255, 255), Scalar(80, 80, 80), 2);
+
+          // SPEED - Button (Red)
+          rectangle(canvas, Rect(60, 440, 260, 70), Scalar(50, 50, 200), -1);
+          rectangle(canvas, Rect(60, 440, 260, 70), Scalar(255, 255, 255), 3);
+          putText(canvas, "SPEED -", Point(125, 485), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // SPEED + Button (Green)
+          rectangle(canvas, Rect(400, 440, 260, 70), Scalar(50, 180, 50), -1);
+          rectangle(canvas, Rect(400, 440, 260, 70), Scalar(255, 255, 255), 3);
+          putText(canvas, "SPEED +", Point(465, 485), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // BACK Button (Gray)
+          rectangle(canvas, Rect(160, 530, 400, 70), Scalar(80, 80, 80), -1);
+          rectangle(canvas, Rect(160, 530, 400, 70), Scalar(255, 255, 255), 3);
+          putText(canvas, "KEMBALI KE MENU", Point(245, 575), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // Warning Banner
+          string warnText = anyApproachingDanger ? "AWAS ADA KENDARAAN YANG AKAN MENDAHULUI" : "BISA MENYUSUL";
+          Scalar warnBg = anyApproachingDanger ? Scalar(0, 0, 255) : Scalar(0, 180, 0);
+
+          int baseline = 0;
+          Size sz = getTextSize(warnText, FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+          Point pos(360 - sz.width / 2, 700);
+          putTextBg(canvas, warnText, pos, 0.7, Scalar(255, 255, 255), warnBg, 2);
+
+          // Telemetry info
+          string statsText = "Display FPS: " + to_string(static_cast<int>(displayFPS)) + 
+                             " | Infer FPS: " + to_string(static_cast<int>(inferenceFPS)) + 
+                             " | Detections: " + to_string(detections.size());
+          putText(canvas, statsText, Point(60, 750), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1, LINE_AA);
+
+          // ROTATE Button (Gray)
+          rectangle(canvas, Rect(580, 40, 100, 60), Scalar(100, 100, 100), -1);
+          rectangle(canvas, Rect(580, 40, 100, 60), Scalar(255, 255, 255), 2);
+          putText(canvas, "ROT", Point(605, 80), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+        }
+      }
+
+      // Display the final canvas with physical rotation if requested
+      if (rotateMode == 90 || rotateMode == 270) {
+        Mat rotatedCanvas;
+        if (rotateMode == 90) {
+          rotate(canvas, rotatedCanvas, ROTATE_90_CLOCKWISE);
+        } else {
+          rotate(canvas, rotatedCanvas, ROTATE_90_COUNTERCLOCKWISE);
+        }
+        imshow("Optimized Collision Warning", rotatedCanvas);
+      } else {
+        imshow("Optimized Collision Warning", canvas);
+      }
 
       int key = waitKey(1);
-      if (key == 27) {
+      if (key == 27 || exitRequested || getWindowProperty("Optimized Collision Warning", WND_PROP_VISIBLE) < 1) {
         break;
       } else if (key == 'w' || key == 'W') {
         currentSpeedKmh = min(currentSpeedKmh + 5.0, 120.0);
@@ -539,12 +957,126 @@ int main(int argc, char **argv) {
     }
 
     if (!headless) {
-      namedWindow("Performance Summary", WINDOW_NORMAL);
-      resizeWindow("Performance Summary", 640, 400);
-      imshow("Performance Summary", summaryImg);
-      cout << "Performance Summary window opened. Press any key to exit..."
-           << endl;
-      waitKey(0);
+      // Re-setup mouse callback for summary screen on the same unified window
+      bool summaryExit = false;
+      struct SummaryControl {
+        bool *exitRequested;
+        int rotateMode;
+      };
+      
+      rotateMode = readRotationConfig();
+      SummaryControl sCtrl = { &summaryExit, rotateMode };
+      
+      setMouseCallback("Optimized Collision Warning", [](int event, int x, int y, int flags, void* userdata) {
+        if (event == EVENT_LBUTTONDOWN) {
+          SummaryControl *ctrl = static_cast<SummaryControl*>(userdata);
+          int rx = x;
+          int ry = y;
+          if (ctrl->rotateMode == 90) {
+            rx = y;
+            ry = 720 - 1 - x;
+          } else if (ctrl->rotateMode == 270) {
+            rx = 1280 - 1 - y;
+            ry = x;
+          }
+
+          // Check ROTATE button click
+          bool rotateClicked = false;
+          if (ctrl->rotateMode == 90 || ctrl->rotateMode == 270) {
+            if (rx >= 1140 && rx <= 1240 && ry >= 40 && ry <= 100) {
+              rotateClicked = true;
+            }
+          } else {
+            if (x >= 580 && x <= 680 && y >= 40 && y <= 100) {
+              rotateClicked = true;
+            }
+          }
+
+          if (rotateClicked) {
+            if (ctrl->rotateMode == 0) ctrl->rotateMode = 90;
+            else if (ctrl->rotateMode == 90) ctrl->rotateMode = 270;
+            else ctrl->rotateMode = 0;
+            writeRotationConfig(ctrl->rotateMode);
+            return;
+          }
+
+          // Check KEMBALI button click
+          // Portrait KEMBALI: x in [160, 560], y in [950, 1050]
+          // Landscape KEMBALI: rx in [50, 200], ry in [300, 380]
+          if (ctrl->rotateMode == 90 || ctrl->rotateMode == 270) {
+            if (rx >= 50 && rx <= 200 && ry >= 300 && ry <= 380) {
+              *(ctrl->exitRequested) = true;
+            }
+          } else {
+            if (x >= 160 && x <= 560 && y >= 950 && y <= 1050) {
+              *(ctrl->exitRequested) = true;
+            }
+          }
+        }
+      }, &sCtrl);
+
+      cout << "Performance Summary window opened. Touch KEMBALI or press any key to exit..." << endl;
+      while (!summaryExit) {
+        int currentRot = sCtrl.rotateMode;
+        Mat canvas;
+        if (currentRot == 90 || currentRot == 270) {
+          canvas = Mat::zeros(720, 1280, CV_8UC3);
+          
+          // Draw Title
+          putText(canvas, "PERFORMANCE SUMMARY", Point(440, 75), FONT_HERSHEY_SIMPLEX, 0.9, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // Draw the summary graph (originally 720x500) resized to fit on the right/center
+          Mat resizedGraph;
+          resize(summaryImg, resizedGraph, Size(800, 500));
+          resizedGraph.copyTo(canvas(Rect(240, 150, 800, 500)));
+
+          // KEMBALI Button
+          rectangle(canvas, Rect(50, 300, 150, 80), Scalar(80, 80, 80), -1);
+          rectangle(canvas, Rect(50, 300, 150, 80), Scalar(255, 255, 255), 2);
+          putText(canvas, "KEMBALI", Point(75, 345), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // ROTATE Button
+          rectangle(canvas, Rect(1140, 40, 100, 60), Scalar(100, 100, 100), -1);
+          rectangle(canvas, Rect(1140, 40, 100, 60), Scalar(255, 255, 255), 2);
+          putText(canvas, "ROT", Point(1165, 80), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+
+        } else {
+          canvas = Mat::zeros(1280, 720, CV_8UC3);
+
+          // Draw Title
+          putText(canvas, "PERFORMANCE SUMMARY", Point(160, 120), FONT_HERSHEY_SIMPLEX, 0.9, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // Draw graphImg directly in the center
+          summaryImg.copyTo(canvas(Rect(0, 250, 720, 500)));
+
+          // KEMBALI KE MENU Button
+          rectangle(canvas, Rect(160, 950, 400, 100), Scalar(80, 80, 80), -1);
+          rectangle(canvas, Rect(160, 950, 400, 100), Scalar(255, 255, 255), 3);
+          putText(canvas, "KEMBALI KE MENU", Point(245, 1010), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2, LINE_AA);
+
+          // ROTATE Button
+          rectangle(canvas, Rect(580, 40, 100, 60), Scalar(100, 100, 100), -1);
+          rectangle(canvas, Rect(580, 40, 100, 60), Scalar(255, 255, 255), 2);
+          putText(canvas, "ROT", Point(605, 80), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 255, 255), 2, LINE_AA);
+        }
+
+        if (currentRot == 90 || currentRot == 270) {
+          Mat rotatedCanvas;
+          if (currentRot == 90) {
+            rotate(canvas, rotatedCanvas, ROTATE_90_CLOCKWISE);
+          } else {
+            rotate(canvas, rotatedCanvas, ROTATE_90_COUNTERCLOCKWISE);
+          }
+          imshow("Optimized Collision Warning", rotatedCanvas);
+        } else {
+          imshow("Optimized Collision Warning", canvas);
+        }
+
+        int key = waitKey(50);
+        if (key >= 0) {
+          break;
+        }
+      }
     }
   }
 

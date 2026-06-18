@@ -51,3 +51,9 @@ target_link_libraries(program_video ${OpenCV_LIBS})
 if(OpenMP_FOUND)
     target_link_libraries(program_video OpenMP::OpenMP_CXX)
 endif()
+
+# Executable for interactive launcher menu
+add_executable(program_menu
+    menu.cpp
+)
+target_link_libraries(program_menu ${OpenCV_LIBS})
